@@ -1,0 +1,66 @@
+[
+ {
+  "id": "bengaluru",
+  "name": "BENGALURU",
+  "sub": "Outer Ring Road",
+  "start": "TIN FACTORY",
+  "end": "BRIGADE SENATE 2",
+  "length": 13540.8
+ },
+ {
+  "id": "chennai",
+  "name": "CHENNAI",
+  "sub": "Marina to Besant Nagar",
+  "start": "NAPIER BRIDGE",
+  "end": "ELLIOT'S BEACH",
+  "length": 10261.3
+ },
+ {
+  "id": "mysuru",
+  "name": "MYSURU",
+  "sub": "Palace to Chamundi Hills",
+  "start": "MYSORE PALACE",
+  "end": "CHAMUNDI HILLS",
+  "length": 11662.2
+ },
+ {
+  "id": "wayanad",
+  "name": "WAYANAD",
+  "sub": "Thamarassery Ghat",
+  "start": "ADIVARAM",
+  "end": "LAKKIDI",
+  "length": 10098.4
+ },
+ {
+  "id": "kannur",
+  "name": "KANNUR - THALASSERY",
+  "sub": "NH 66",
+  "start": "KANNUR",
+  "end": "THALASSERY",
+  "length": 22541.8
+ },
+ {
+  "id": "kochi",
+  "name": "ERNAKULAM",
+  "sub": "Marine Drive to Edappally",
+  "start": "MARINE DRIVE",
+  "end": "EDAPPALLY",
+  "length": 7664.4
+ },
+ {
+  "id": "trivandrum",
+  "name": "THIRUVANANTHAPURAM",
+  "sub": "East Fort to Kovalam",
+  "start": "EAST FORT",
+  "end": "KOVALAM",
+  "length": 12357.1
+ },
+ {
+  "id": "hyderabad",
+  "name": "HYDERABAD",
+  "sub": "Charminar to Tank Bund",
+  "start": "CHARMINAR",
+  "end": "TANK BUND",
+  "length": 9416.5
+ }
+]

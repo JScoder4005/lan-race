@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Harbor</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="loading">
+  <div class="logo">NEON <span>HARBOR</span></div>
+  <div class="bar"><i id="loadbar"></i></div>
+  <div id="loadtext">Loading…</div>
+</div>
+
+<div id="menu" class="hidden">
+  <div class="menu-left">
+    <div class="logo">NEON <span>HARBOR</span></div>
+    <div class="tagline">LAN STREET RACING</div>
+
+    <div class="panel">
+      <label>DRIVER NAME</label>
+      <input id="name" maxlength="16" spellcheck="false" autocomplete="off">
+      <label>CAR</label>
+      <div class="carsel">
+        <button id="carPrev">&#9664;</button>
+        <div><div id="carName"></div>
+          <div class="stat"><span>SPEED</span><i><b id="stSpeed"></b></i></div>
+          <div class="stat"><span>ACCEL</span><i><b id="stAccel"></b></i></div>
+          <div class="stat"><span>HANDLING</span><i><b id="stHandling"></b></i></div>
+        </div>
+        <button id="carNext">&#9654;</button>
+      </div>
+      <label>GRAPHICS</label>
+      <div class="seg small" id="gfxSeg" style="margin-bottom:16px"><button data-gfx="auto">AUTO</button><button data-gfx="high">HIGH</button><button data-gfx="medium">MEDIUM</button><button data-gfx="low">LOW</button></div>
+      <label>PAINT</label>
+      <div id="paints"></div>
+    </div>
+
+    <div class="panel" id="hostPanel">
+      <label>MAP <small id="hostNote"></small></label>
+      <select id="mapSel"></select>
+      <div id="mapInfo" class="muted" style="margin:-6px 0 14px"></div>
+      <label>EVENT</label>
+      <div class="seg" id="modeSeg">
+        <button data-mode="race">CIRCUIT RACE</button>
+        <button data-mode="pursuit">COP PURSUIT</button>
+      </div>
+      <div class="row" id="lapsRow">
+        <span>LAPS</span>
+        <div class="seg small" id="lapSeg">
+          <button data-laps="1">1</button><button data-laps="2">2</button><button data-laps="3">3</button><button data-laps="5">5</button>
+        </div>
+      </div>
+      <div class="row">
+        <span>CITY TRAFFIC</span>
+        <div class="seg small" id="trafficSeg"><button data-traffic="1">ON</button><button data-traffic="0">OFF</button></div>
+      </div>
+      <button id="startBtn" class="go">START EVENT</button>
+      <div id="waitHost" class="muted">Waiting for host to start…</div>
+    </div>
+  </div>
+
+  <div class="menu-right">
+    <div class="panel">
+      <label>LOBBY <small id="lobbyCount"></small></label>
+      <div id="lobby"></div>
+      <div id="joinHint" class="muted"></div>
+    </div>
+    <div class="panel keys">
+      <label>CONTROLS</label>
+      <div><b>W / ↑</b> throttle <b>S / ↓</b> brake / reverse</div>
+      <div><b>A D / ← →</b> steer <b>SPACE</b> handbrake · brake + steer at speed = drift</div>
+      <div><b>SHIFT / N</b> nitro <b>C</b> camera <b>B</b> look back</div>
+      <div><b>R</b> reset car <b>K</b> rain <b>G</b> "Most Wanted" filter <b>M</b> mute</div>
+      <div><b>ESC</b> menu · Gamepad supported (RT/LT, A = nitro, B = handbrake)</div>
+      <div class="muted">Drift, near-miss traffic and take down cops to refill nitro.</div>
+    </div>
+    <div id="lyrics">
+      <div class="np"><button id="musicBtn">&#9835; MUSIC ON</button><span>NOW PLAYING · <b>NEON HARBOR NIGHTS</b></span></div>
+      <div id="lyLine"><span class="muted">Click anywhere to start the sound</span></div>
+      <div id="lyNext"></div>
+    </div>
+    <div class="credits">Ferrari 458 Italia by vicent091036 (CC-BY 4.0, three.js examples) · Concept car by Eric Chadwick / Darmstadt Graphics Group (CC-BY 4.0, Khronos glTF samples) · Traffic: Kenney Car Kit (CC0) · Noto Sans CJK (OFL) · Sounds: domasx2, aquinn, rubberduck (CC0), qubodup tire squeal (CC-BY 3.0), via OpenGameArt · Road data © OpenStreetMap contributors (ODbL)</div>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="hudTL">
+    <div id="racePanel">
+      <div id="pos"><b>1</b><span>/1</span></div>
+      <div id="lap">LAP 1/3</div>
+      <div id="times"><div id="tCur">0:00.00</div><div id="tBest">BEST --</div></div>
+      <div id="standings"></div>
+    </div>
+    <div id="copPanel">
+      <div id="stars"></div>
+      <div id="bounty">BOUNTY 0</div>
+      <div id="banked">BANKED 0</div>
+      <div id="copCount"></div>
+    </div>
+  </div>
+  <canvas id="minimap" width="240" height="240"></canvas>
+  <canvas id="tach" width="320" height="320"></canvas>
+  <div id="pbar"><span class="l">EVADE</span><div class="track"><i class="ev"></i><i class="bu"></i></div><span class="r">BUSTED</span></div>
+  <div id="cool"><span>COOLDOWN</span><div class="track"><i></i></div></div>
+  <div id="popups"></div>
+  <div id="wrongway">WRONG WAY</div>
+  <div id="net"></div>
+</div>
+
+<div id="big"></div>
+
+<div id="results" class="hidden">
+  <div class="panel">
+    <div class="logo small">RESULTS</div>
+    <table id="resTable"></table>
+    <button id="lobbyBtn" class="go">BACK TO LOBBY</button>
+    <div id="resWait" class="muted">Host returns everyone to the lobby.</div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
