@@ -358,6 +358,8 @@ async function loadMap(id) {
   oldEnv?.dispose();
   me = new CarPhysics(track);
   G.mapId = id; G.theme = T; G.mapInfo = data || TOKYO_INFO;
+  // upload every texture now so the first sight of a vehicle or building type mid-race doesn't hitch
+  scene.traverse((o) => { for (const m of [].concat(o.material || [])) for (const k in m) if (m[k]?.isTexture) renderer.initTexture(m[k]); });
   renderer.compile(scene, camera);
   renderLobby();
 }

@@ -31,9 +31,9 @@ const CLASS = {
 const classOf = (type) => {
   const t = type.replace('real:', '');
   return t === 'scooter' || t === 'bike' || REAL[t]?.ride ? 'tw' : t === 'auto' ? 'auto'
-    : /^(bus|lorry|garbage-truck|firetruck|viking|citybus|keralabus|tata)/.test(t) ? 'heavy' : 'car';
+    : /^(bus|lorry|garbage-truck|firetruck|viking|citybus|keralabus|ksrtc|tata|eicher|tractor)/.test(t) ? 'heavy' : 'car';
 };
-const isBusType = (type) => /bus|viking/.test(type);
+const isBusType = (type) => /bus|viking|ksrtc/.test(type);
 // On-road vehicle mix per route (shares of vehicles) and vehicles per km per direction, from classified counts where
 // published: Bengaluru intersection counts (>70% 2W, 15% car, 4% auto), Chennai arterial (58/26/12/4), Kochi mobility plan
 // 2024 (~60% 2W, ~27% car) + RITES MG Road (14% auto, 11% bus), Hyderabad (50/16/16 auto/5 bus, 9% cycles folded into 2W),
@@ -132,24 +132,42 @@ function bake(gltf) {
 // Real Indian traffic (Sketchfab CC models, scripts/fetch-vehicles.py): length (m) to scale to, mass (kg), rider pose.
 const REAL = {
   swift: { len: 3.86, mass: 920 }, dzire: { len: 3.995, mass: 960 }, baleno: { len: 3.99, mass: 935 }, city: { len: 4.58, mass: 1110 },
-  creta: { len: 4.33, mass: 1350 }, scorpio: { len: 4.46, mass: 1900 }, innova: { len: 4.75, mass: 1750 }, wagonr: { len: 3.66, mass: 850 },
-  bolero: { len: 3.995, mass: 1600 },
-  activa: { len: 1.83, mass: 180, ride: 'scooter' }, scooter125: { len: 1.87, mass: 180, ride: 'scooter' }, olaev: { len: 1.86, mass: 190, ride: 'scooter' },
+  creta: { len: 4.33, mass: 1350 }, scorpio: { len: 4.46, mass: 1900 }, innova: { len: 4.75, mass: 1750 }, wagonr: { len: 3.66, mass: 850, yaw: 180 },
+  bolero: { len: 3.995, mass: 1600 }, ertiga: { len: 4.4, mass: 1150 }, punch: { len: 3.83, mass: 1030 }, i20: { len: 3.995, mass: 1080 },
+  seltos: { len: 4.365, mass: 1350 }, xuv3xo: { len: 3.99, mass: 1360 }, xuv700: { len: 4.7, mass: 1900 }, ambassador: { len: 4.33, mass: 1160 },
+  eeco: { len: 3.68, mass: 940 }, fz: { len: 1.99, mass: 210, ride: 'naked', yaw: 180 }, rx100: { len: 1.93, mass: 180, ride: 'naked' },
+  jupiter: { len: 1.85, mass: 185, ride: 'scooter' }, tataace: { len: 3.8, mass: 1600, vmax: 15 }, tata407: { len: 5.6, mass: 5000 },
+  eicher: { len: 7.0, mass: 9000 }, tractor: { len: 3.7, mass: 2500, vmax: 7 },
+  activa: { len: 1.83, mass: 180, ride: 'scooter', yaw: 180 }, scooter125: { len: 1.87, mass: 180, ride: 'scooter', yaw: 180 }, olaev: { len: 1.86, mass: 190, ride: 'scooter' },
   deliveryev: { len: 1.8, mass: 200, ride: 'scooter' }, pulsar: { len: 2.06, mass: 220, ride: 'naked' }, apache: { len: 2.08, mass: 215, ride: 'naked' },
   classic350: { len: 2.15, mass: 270, ride: 'cruiser' },
-  auto: { len: 2.63, mass: 450 }, viking: { len: 11.0, mass: 12000 }, citybus: { len: 11.0, mass: 12000 }, keralabus: { len: 11.0, mass: 12000, ownLivery: true },
-  tatatruck: { len: 7.5, mass: 10000 }, tatalorry: { len: 7.4, mass: 10000 },
+  auto: { len: 2.63, mass: 450, yaw: 180 }, viking: { len: 11.0, mass: 12000 }, citybus: { len: 11.0, mass: 12000, yaw: 180 }, keralabus: { len: 9.5, mass: 11000, ownLivery: true, yaw: 180 }, ksrtc: { len: 11.0, mass: 12000, ownLivery: true },
+  tatatruck: { len: 7.5, mass: 10000, yaw: 180 }, tatalorry: { len: 7.4, mass: 10000 },
 };
 // Shares of new sales (FY25-26, SIAM data) decide which real models appear.
-const CAR_SHARE = { dzire: 4.9, swift: 4.0, wagonr: 3.9, baleno: 3.7, creta: 4.4, scorpio: 3.9, innova: 4.3, city: 1.6, bolero: 2.5 };
-const TW_SHARE = { activa: 30, scooter125: 16, pulsar: 22, apache: 12, classic350: 7, olaev: 7, deliveryev: 6 };
+const CAR_SHARE = { dzire: 4.9, swift: 4.0, wagonr: 3.9, baleno: 3.7, creta: 4.4, scorpio: 3.9, ertiga: 4.3, punch: 4.0, i20: 2.5, seltos: 2.6,
+  xuv3xo: 2.0, xuv700: 2.0, city: 1.6, bolero: 2.5, eeco: 2.2, ambassador: 0.3 };
+const TW_SHARE = { activa: 26, jupiter: 11, scooter125: 8, pulsar: 18, apache: 8, fz: 6, rx100: 1, olaev: 6, deliveryev: 6 };
+// Goods vehicles: mini trucks dominate city deliveries, heavy lorries the highways (and the ghat after 8 pm).
+const TRUCK_SHARE = { tataace: 5, tata407: 2, eicher: 2, tatatruck: 2, tatalorry: 2, tractor: 1 };
+// Local flavour per route, multiplied onto the shares above.
+const LOCAL = {
+  bengaluru: { olaev: 2, deliveryev: 2, seltos: 1.5, xuv700: 1.5, ambassador: 0, tractor: 0 },
+  chennai: { tractor: 0, i20: 1.5, ambassador: 0.5 },
+  mysuru: { tractor: 1, tataace: 1.5, bolero: 1.5, olaev: 0.6, deliveryev: 0.4 },
+  wayanad: { bolero: 4, scorpio: 2, xuv700: 2, eeco: 1.5, tatatruck: 3, tatalorry: 3, eicher: 2, tataace: 1, deliveryev: 0, olaev: 0.3, ambassador: 1.5 },
+  kannur: { tractor: 0, ambassador: 4, ertiga: 1.5, tatatruck: 1.5, tatalorry: 1.5 },
+  kochi: { tractor: 0, ambassador: 3, ertiga: 1.5, olaev: 1.3 },
+  trivandrum: { tractor: 0, ambassador: 4, ertiga: 1.5 },
+  hyderabad: { tractor: 0, ambassador: 0, i20: 1.3 },
+};
 // Indian car colour popularity: white dominates, then silver/grey.
 const CAR_COLOURS = [[0xf2f2f0, 40], [0xb9bcc2, 18], [0x5d6168, 10], [0x9a1b1b, 8], [0x1d3a6e, 8], [0x16171a, 8], [0x6b4a32, 4], [0xd8c9a8, 4]];
 const riderMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
 
 function bakeReal(gltf, cfg) {
   const wheels = autoWheels(gltf.scene, { kind: cfg.ride ? 'bike' : 'car' });
-  const { norm, dims } = normalizeVehicle(gltf.scene, wheels || [], 1, cfg.len);
+  const { norm, dims } = normalizeVehicle(gltf.scene, wheels || [], 1, cfg.len, cfg.yaw || 0);
   norm.updateMatrixWorld(true);
   const groups = new Map();
   norm.traverse((o) => {
@@ -161,7 +179,10 @@ function bakeReal(gltf, cfg) {
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
     for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
     g.morphAttributes = {};
-    if (!groups.has(m.uuid)) groups.set(m.uuid, { mat: m, geos: [] });
+    if (!groups.has(m.uuid)) { // merged geometry keeps one UV set: point every texture at it
+      for (const k in m) if (m[k]?.isTexture) m[k].channel = 0;
+      groups.set(m.uuid, { mat: m, geos: [] });
+    }
     groups.get(m.uuid).geos.push(g);
   });
   const parts = [...groups.values()].map(({ mat, geos }) => ({ geo: mergeGeometries(geos), mat, paint: MAT.paint.test(mat.name || '') && !MAT.skip.test(mat.name || '') }));
@@ -344,13 +365,14 @@ export class Traffic {
       const mix = MIX[mapId] || MIX.bengaluru;
       const pickW = (w) => { const ks = Object.keys(w).filter((k) => w[k] > 0); let x = r() * ks.reduce((a, k) => a + w[k], 0); for (const k of ks) { x -= w[k]; if (x <= 0) return k; } return ks[0]; };
       const carKinds = { sedan: weights.sedan ?? 4, suv: weights.suv ?? 2, hatch: weights.hatch ?? 3, van: weights.van ?? 1, delivery: weights.delivery ?? 0.5 };
-      const realOf = (share) => Object.fromEntries(Object.entries(share).filter(([id]) => all['real:' + id]).map(([id, w]) => ['real:' + id, w]));
-      const realCars = realOf(CAR_SHARE), realTw = realOf(mapId === 'wayanad' ? { ...TW_SHARE, deliveryev: 0 } : TW_SHARE);
+      const loc = LOCAL[mapId] || {};
+      const realOf = (share) => Object.fromEntries(Object.entries(share).map(([id, w]) => [id, w * (loc[id] ?? 1)])
+        .filter(([id, w]) => w > 0 && all['real:' + id]).map(([id, w]) => ['real:' + id, w]));
+      const realCars = realOf(CAR_SHARE), realTw = realOf(TW_SHARE), realTrucks = realOf(TRUCK_SHARE);
       // Malabar (Kannur, Wayanad) runs mostly private stage buses; elsewhere state transport (KSRTC/BMTC/MTC/TGSRTC).
-      const busPool = { kannur: ['keralabus', 'keralabus', 'keralabus', 'viking'], wayanad: ['keralabus', 'keralabus', 'viking'] }[mapId]
-        || (T.lang === 'ml' ? ['viking', 'viking', 'viking', 'keralabus'] : ['viking', 'citybus']);
+      const busPool = { kannur: ['keralabus', 'keralabus', 'keralabus', 'ksrtc'], wayanad: ['keralabus', 'keralabus', 'ksrtc'] }[mapId]
+        || (T.lang === 'ml' ? ['ksrtc', 'ksrtc', 'ksrtc', 'keralabus'] : ['viking', 'citybus']);
       const realBus = busPool.filter((id) => all['real:' + id]).map((id) => 'real:' + id);
-      const realTruck = ['tatatruck', 'tatalorry'].filter((id) => all['real:' + id]).map((id) => 'real:' + id);
       const has = (o) => Object.keys(o).length > 0;
       for (const dir of [1, -1]) {
         const lanes = { tw: [], between: [], slow: [], fast: [] };
@@ -361,7 +383,7 @@ export class Traffic {
           if (cls === 'tw') { type = has(realTw) ? pickW(realTw) : r() < 0.55 ? 'bike' : 'scooter'; const q = r(); lane = q < 0.6 || !four ? 'tw' : q < 0.85 ? 'between' : 'fast'; }
           else if (cls === 'auto') { type = all['real:auto'] ? 'real:auto' : 'auto'; lane = 'slow'; }
           else if (cls === 'bus') { type = realBus.length ? realBus[Math.floor(r() * realBus.length)] : busTypes[Math.floor(r() * busTypes.length)]; lane = 'slow'; }
-          else if (cls === 'truck') { type = realTruck.length ? realTruck[Math.floor(r() * realTruck.length)] : r() < 0.75 ? 'lorry' : 'truck'; lane = 'slow'; }
+          else if (cls === 'truck') { type = has(realTrucks) ? pickW(realTrucks) : r() < 0.75 ? 'lorry' : 'truck'; lane = 'slow'; }
           else if (has(realCars)) { type = pickW(realCars); lane = r() < 0.65 ? 'fast' : 'slow'; }
           else { const k = pickW(carKinds); const opts = KIND_MODELS[k]; type = opts[Math.floor(r() * opts.length)]; lane = r() < 0.65 ? 'fast' : 'slow'; }
           if (!all[type]) continue;
@@ -394,7 +416,7 @@ export class Traffic {
         scene.add(im); this.meshes.push(im);
         return im;
       };
-      const ty = { meshes: [], tinted: [], tail: null, n: 0 };
+      const ty = { meshes: [], tinted: [], head: null, tail: null, n: 0, nl: 0 };
       if (m.real) {
         const own = REAL[type.slice(5)]?.ownLivery;
         for (const part of m.parts) { const tint = part.paint && !own; const im = mk(part.geo, part.mat, tint); ty.meshes.push(im); if (tint) ty.tinted.push(im); }
@@ -407,8 +429,10 @@ export class Traffic {
         ty.meshes.push(body); if (m.tint !== null) ty.tinted.push(body);
         if (m.extra) ty.meshes.push(mk(m.extra, extraMat));
       }
-      ty.meshes.push(mk(m.head, headMat));
-      ty.tail = mk(m.tail, tailMat, true); ty.meshes.push(ty.tail);
+      // head/tail lamps are cheap and stay visible much further than the bodies, so traffic never pops in the dark
+      ty.head = mk(m.head, headMat);
+      ty.tail = mk(m.tail, tailMat, true);
+      ty.nl = 0;
       this.types.push(ty);
       const isBus = isBusType(type), isTw = m.real ? !!REAL[type.slice(5)]?.ride : m.tint === true;
       list.forEach((p, i) => {
@@ -488,6 +512,8 @@ export class Traffic {
       const rr = mulberry(c.gi * 7919 + 31);
       c.K = K; c.cls = classOf(c.type);
       c.vDes = (c.vDes || K.v) * (1 - K.vr + 2 * K.vr * rr());
+      const cap = REAL[c.type.replace('real:', '')]?.vmax;
+      if (cap) c.vDes = Math.min(c.vDes, cap * (0.9 + 0.2 * rr()));
       c.bus = isBusType(c.type);
       (this.groups[c.dir > 0 ? 0 : 1] ||= []).push(c);
     }
@@ -671,7 +697,8 @@ export class Traffic {
     const s = this._tmp, L = this.track.length, E = this._e, col = this._c, Lq = this.Lq;
     const R2 = this.drawDist * this.drawDist;
     let nBeam = 0;
-    for (const ty of this.types) ty.n = 0;
+    for (const ty of this.types) ty.n = ty.nl = 0;
+    const LIGHTS2 = Math.max(R2, 1500 * 1500);
     for (const c of this.cars) {
       let pitch = 0, roll = 0, brake = 1;
       if (c.knocked) {
@@ -713,20 +740,24 @@ export class Traffic {
         if (!c.on) { c.x = c.z = 1e6; }
       }
       if (!c.on) continue;
-      const dx = c.x - camX, dz = c.z - camZ;
-      if (dx * dx + dz * dz > R2) continue;
+      const dx = c.x - camX, dz = c.z - camZ, d2 = dx * dx + dz * dz;
+      if (d2 > LIGHTS2) continue;
       E.set(pitch, c.yaw, roll);
       this._q.setFromEuler(E);
       this._p.set(c.x, c.y + 0.02, c.z);
       this._m.compose(this._p, this._q, this._s);
-      const ty = c.ty, slot = ty.n++;
+      const ty = c.ty, ls = ty.nl++;
+      ty.head.setMatrixAt(ls, this._m); ty.tail.setMatrixAt(ls, this._m);
+      ty.tail.setColorAt(ls, col.setRGB(brake, brake, brake));
+      if (d2 > R2) continue;
+      const slot = ty.n++;
       for (const im of ty.meshes) im.setMatrixAt(slot, this._m);
       for (const im of ty.tinted) im.setColorAt(slot, c.col);
-      ty.tail.setColorAt(slot, col.setRGB(brake, brake, brake));
       if (!c.knocked) this.beams.setMatrixAt(nBeam++, this._m);
     }
-    for (const ty of this.types) for (const im of ty.meshes) {
-      im.count = ty.n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    for (const ty of this.types) {
+      for (const im of ty.meshes) { im.count = ty.n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+      for (const im of [ty.head, ty.tail]) { im.count = ty.nl; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
     }
     this.beams.count = nBeam; this.beams.instanceMatrix.needsUpdate = true;
   }

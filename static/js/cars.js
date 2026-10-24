@@ -20,17 +20,26 @@ export const CARS = {
   creta: veh('creta', 'HYUNDAI CRETA', 'COMPACT SUV', { top: 190, tAcc: 8.9, mass: 1350, len: 4.33, grip: 0.95 }),
   thar: veh('thar', 'MAHINDRA THAR', 'OFF-ROADER', { top: 155, tAcc: 10.5, mass: 1750, len: 3.98, grip: 0.88 }),
   scorpio: veh('scorpio', 'MAHINDRA SCORPIO', 'SUV', { top: 165, tAcc: 11.5, mass: 1900, len: 4.46, grip: 0.9 }),
-  innova: veh('innova', 'TOYOTA INNOVA', 'MPV', { top: 175, tAcc: 11.5, mass: 1750, len: 4.75, grip: 0.92 }),
+  innova: veh('innova', 'TOYOTA INNOVA CRYSTA', 'MPV', { top: 175, tAcc: 11.5, mass: 1750, len: 4.75, grip: 0.92 }),
+  punch: veh('punch', 'TATA PUNCH', 'MICRO SUV', { top: 150, tAcc: 16.5, mass: 1030, len: 3.83, grip: 0.93 }),
+  i20: veh('i20', 'HYUNDAI i20', 'PREMIUM HATCHBACK', { top: 180, tAcc: 10.5, mass: 1080, len: 3.995 }),
+  seltos: veh('seltos', 'KIA SELTOS', 'COMPACT SUV', { top: 190, tAcc: 9.7, mass: 1350, len: 4.365, grip: 0.95 }),
+  xuv3xo: veh('xuv3xo', 'MAHINDRA XUV 3XO', 'COMPACT SUV', { top: 180, tAcc: 9.5, mass: 1360, len: 3.99, grip: 0.95 }),
+  ambassador: veh('ambassador', 'HINDUSTAN AMBASSADOR', 'CLASSIC', { top: 125, tAcc: 22, mass: 1160, len: 4.33, grip: 0.82, voice: 0.85 }),
   bmw3: veh('bmw3', 'BMW 3 SERIES', 'LUXURY SEDAN', { top: 235, tAcc: 6.2, mass: 1600, len: 4.71, grip: 1.05 }),
   a4: veh('a4', 'AUDI A4', 'LUXURY SEDAN', { top: 241, tAcc: 7.1, mass: 1580, len: 4.76, grip: 1.05 }),
   cclass: veh('cclass', 'MERCEDES-BENZ C-CLASS', 'LUXURY SEDAN', { top: 246, tAcc: 7.3, mass: 1650, len: 4.79, grip: 1.05 }),
-  q7: veh('q7', 'AUDI Q7', 'LUXURY SUV', { top: 250, tAcc: 5.9, mass: 2150, len: 5.06, grip: 0.98 }),
-  activa: veh('activa', 'HONDA ACTIVA', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 85, tAcc: 8.6, vAcc: 60, mass: 106, len: 1.83, voice: 1.25 }),
-  scooter125: veh('scooter125', '125CC SCOOTER', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 90, tAcc: 7.8, vAcc: 60, mass: 104, len: 1.87, voice: 1.25 }),
+  q7: veh('q7', 'AUDI Q7', 'LUXURY SUV', { top: 250, tAcc: 5.9, mass: 2150, len: 5.06, grip: 0.98, yaw: 180 }),
+  activa: veh('activa', 'HONDA ACTIVA', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 85, tAcc: 8.6, vAcc: 60, mass: 106, len: 1.83, voice: 1.25, yaw: 180 }),
+  scooter125: veh('scooter125', '125CC SCOOTER', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 90, tAcc: 7.8, vAcc: 60, mass: 104, len: 1.87, voice: 1.25, yaw: 180 }),
   pulsar: veh('pulsar', 'BAJAJ PULSAR 150', 'COMMUTER', { kind: 'bike', ride: 'naked', top: 115, tAcc: 4.8, vAcc: 60, mass: 148, len: 2.06, voice: 1.3 }),
   apache: veh('apache', 'TVS APACHE RTR 180', 'STREET', { kind: 'bike', ride: 'naked', top: 124, tAcc: 4.1, vAcc: 60, mass: 139, len: 2.08, voice: 1.35 }),
   classic350: veh('classic350', 'ROYAL ENFIELD CLASSIC 350', 'CRUISER', { kind: 'bike', ride: 'cruiser', top: 115, tAcc: 5.0, vAcc: 60, mass: 195, len: 2.15, voice: 0.85 }),
   duke390: veh('duke390', 'KTM 390 DUKE', 'NAKED SPORT', { kind: 'bike', ride: 'naked', top: 167, tAcc: 5.5, mass: 168, len: 2.0, grip: 1.08, voice: 1.4 }),
+  fz: veh('fz', 'YAMAHA FZ', 'STREET', { kind: 'bike', ride: 'naked', top: 115, tAcc: 4.5, vAcc: 60, mass: 136, len: 1.99, voice: 1.3, yaw: 180 }),
+  rx100: veh('rx100', 'YAMAHA RX100', 'CLASSIC 2-STROKE', { kind: 'bike', ride: 'naked', top: 100, tAcc: 7.5, vAcc: 60, mass: 103, len: 1.93, voice: 1.55 }),
+  jupiter: veh('jupiter', 'TVS JUPITER', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 82, tAcc: 9.0, vAcc: 60, mass: 109, len: 1.85, voice: 1.25 }),
+  policejeep: veh('policejeep', 'POLICE JEEP', 'POLICE', { top: 140, tAcc: 14, mass: 1700, len: 4.1, hidden: true }),
   ninja: veh('ninja', 'KAWASAKI NINJA 300', 'SPORT', { kind: 'bike', ride: 'sport', top: 180, tAcc: 6.5, mass: 179, len: 2.02, grip: 1.1, voice: 1.5 }),
   ferrari: {
     name: 'FERRARI 458 SPIDER', url: 'models/ferrari.glb', power: 1.0, grip: 1.0, mass: 1500, legacy: true,
@@ -79,11 +88,32 @@ export function gltfLoader() {
 }
 
 // Rotates/offsets a loaded model so it faces +Z, sits on y=0 and is centred between its wheels.
-export function normalizeVehicle(scene, wheelNames, scale = 1, targetLen = 0) {
+export function normalizeVehicle(scene, wheelNames, scale = 1, targetLen = 0, yawDeg = 0) {
   const norm = new THREE.Group();
   norm.add(scene);
   scene.scale.multiplyScalar(scale);
+  scene.rotation.y += (yawDeg * Math.PI) / 180;
   norm.updateMatrixWorld(true);
+  if (targetLen) { // drop SketchUp edge lines and baked ground/shadow planes that some downloads include
+    const lines = [];
+    scene.traverse((o) => { if (o.isLine || o.isPoints) lines.push(o); });
+    for (const o of lines) o.removeFromParent();
+    const meshes = [];
+    scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    const size = meshes.map((o) => new THREE.Box3().setFromObject(o, true).getSize(new THREE.Vector3()));
+    const hz = size.map((s) => Math.max(s.x, s.z)), med = [...hz].sort((a, b) => a - b)[hz.length >> 1] || 1;
+    meshes.forEach((o, i) => {
+      const named = /shadow|ground|floor/i.test(`${o.name} ${o.material?.name || ''}`);
+      const big = Math.max(size[i].x, size[i].y, size[i].z), thin = Math.min(size[i].x, size[i].y, size[i].z);
+      const box = big > med * 4 && o.geometry.attributes.position.count < 200; // studio cube around the model
+      if (meshes.length > 1 && (named || box || (thin < big * 0.004 && big > med * 3))) o.removeFromParent(); // ground or backdrop
+    });
+    norm.updateMatrixWorld(true);
+  }
+  if (targetLen && !wheelNames.length) { // no wheel nodes: put the longer horizontal axis along +Z
+    const b = new THREE.Box3().setFromObject(scene, true);
+    if (b.max.x - b.min.x > b.max.z - b.min.z) { scene.rotation.y += Math.PI / 2; norm.updateMatrixWorld(true); }
+  }
   const objs = wheelNames.map((n) => (typeof n === 'string' ? scene.getObjectByName(n) : n));
   const centre = (o) => new THREE.Box3().setFromObject(o, true).getCenter(new THREE.Vector3());
   const wheels = () => objs.map((o) => o && centre(o));
@@ -192,16 +222,16 @@ export async function loadCarModels(onProgress) {
         const wheels = autoWheels(gltf.scene, cfg);
         cfg.wheelObjs = wheels || [];
         cfg.wheels = (wheels || []).map((o) => o.name);
-        protos[id] = normalizeVehicle(gltf.scene, cfg.wheelObjs, 1, cfg.len);
+        protos[id] = normalizeVehicle(gltf.scene, cfg.wheelObjs, 1, cfg.len, cfg.yaw || 0);
         if (!wheels) console.warn(`${id}: wheels not found, no wheel animation`);
       } else protos[id] = normalizeVehicle(gltf.scene, cfg.wheels);
       bakeCar(protos[id].norm, cfg);
       ok.push(id);
     } catch (e) { if (!cfg.auto) throw e; /* vehicle not downloaded */ }
   }));
-  const indian = Object.keys(CARS).filter((id) => CARS[id].auto && ok.includes(id));
+  const indian = Object.keys(CARS).filter((id) => CARS[id].auto && !CARS[id].hidden && ok.includes(id));
   CAR_IDS = indian.length ? indian : Object.keys(CARS).filter((id) => CARS[id].legacy);
-  POLICE_CAR = ok.includes('scorpio') ? 'scorpio' : ok.includes('innova') ? 'innova' : 'ferrari';
+  POLICE_CAR = ['policejeep', 'scorpio', 'ferrari'].find((id) => ok.includes(id)) || CAR_IDS[0];
   aoTex = await new THREE.TextureLoader().loadAsync('models/ferrari_ao.png');
   const c = document.createElement('canvas'); c.width = 64; c.height = 256;
   const x = c.getContext('2d');

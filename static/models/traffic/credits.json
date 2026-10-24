@@ -1,1 +1,200 @@
-{}
+{
+ "swift": {
+  "title": "Swift 2024",
+  "author": "@ShreyanshChaurasia_12",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/07cf082bab4d430a8a764a23590e35fa"
+ },
+ "dzire": {
+  "title": "Maruti Suzuki Dzire",
+  "author": "rmihir560",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/a96e3b803a144b44ab4b08d484ad844d"
+ },
+ "baleno": {
+  "title": "Baleno 2019",
+  "author": "Car Simulator 2-Preview",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/a12eae7b7c654ec39828122981aa7bad"
+ },
+ "city": {
+  "title": "Honda City 2017",
+  "author": "dewa",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/75671276d4da476294202a5dc050a99e"
+ },
+ "creta": {
+  "title": "Hyundai Creta",
+  "author": "MattDoesBlender",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/67645b6f549441a786e2b4050dc0268b"
+ },
+ "scorpio": {
+  "title": "Mahindra Scorpio",
+  "author": "r34maxpro",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/027c4f62a76e402c8540e3e7670b583e"
+ },
+ "activa": {
+  "title": "Activa scooty 3d model fts",
+  "author": "Sunny khude 3d model",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/de84863d474d4276ae52ff9ab72337bb"
+ },
+ "scooter125": {
+  "title": "Indian Scooter 3d model low poly",
+  "author": "Shiveloper",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/0162842f5bda4ef3b30972fd634c10bb"
+ },
+ "pulsar": {
+  "title": "Bajaj pulsar 150",
+  "author": "@ShreyanshChaurasia_12",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/06fac75c72ed4780a19034447c81e72c"
+ },
+ "apache": {
+  "title": "Tvs apache rtr 180",
+  "author": "@ShreyanshChaurasia_12",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/916198718ea84dd5932b324a1dc5fb61"
+ },
+ "wagonr": {
+  "title": "2013 Suzuki WagonR",
+  "author": "BHP3D",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/71112627f42342099ff95b59e7532663"
+ },
+ "bolero": {
+  "title": "Bolero",
+  "author": "Waseem Kadri",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/9f1e594c45e24012b50992bbfeeecda0"
+ },
+ "auto": {
+  "title": "Autorikshaw - Indian Tuk Tuk",
+  "author": "bhagathartworks",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/5775d012693741008acff9dad410e92d"
+ },
+ "olaev": {
+  "title": "OLA Electric Scooter (White Color)",
+  "author": "neshallads",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/54a28e841f494f7496468f06aa36fbcb"
+ },
+ "deliveryev": {
+  "title": "Low Poly Delivery Electric Scooter",
+  "author": "ramdom_sp",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/16a3330edde14cb7b56626ede007067f"
+ },
+ "viking": {
+  "title": "2008 Ashok Leyland Viking Bus",
+  "author": "Kevin studio Ltd",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/4daaa992332f43419f85783a120cea44"
+ },
+ "citybus": {
+  "title": "Indian  Bus",
+  "author": "Parth",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/67b7998f0f3341a8a96655f96adc1a77"
+ },
+ "tatatruck": {
+  "title": "TATA TRUCK",
+  "author": "@ShreyanshChaurasia_12",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/52bb6a5e030c4fde8c3e0ee977447f4f"
+ },
+ "tatalorry": {
+  "title": "Indian Truck | Tata SE Lorry 3D Model",
+  "author": "apv004",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/b86c47f6a28347b3a942e33dae1af6f5"
+ },
+ "keralabus": {
+  "title": "Kerala Bus 1",
+  "author": "Car Simulator 2-Preview",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/f2d7bd2c567a4fcdb5064c3f4999ec35"
+ },
+ "ksrtc": {
+  "title": "Kerala public transport",
+  "author": "AG DYNAMICS",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/2d4ab65f7a7c470ab14da987a6248b5e"
+ },
+ "ertiga": {
+  "title": "Suzuki Ertiga",
+  "author": "r34maxpro",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/b2d30fc3f98548e5b44fada4029efa86"
+ },
+ "punch": {
+  "title": "Tata Punch",
+  "author": "RahulD",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/1a85da7678ba4f708cfbee0d9303c5d7"
+ },
+ "seltos": {
+  "title": "NEW KIA SELTOS 2026",
+  "author": "rmihir560",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/9b883d7199f64214999e82146ae28dd4"
+ },
+ "xuv3xo": {
+  "title": "XUV 3XO",
+  "author": "@ShreyanshChaurasia_12",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/816995d6c3454462b62c8c44ea39ae65"
+ },
+ "ambassador": {
+  "title": "Hindustan Ambassador",
+  "author": "rSquare",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/a84ef7126b2b43adb7b4b28a4d42e5fb"
+ },
+ "fz": {
+  "title": "Yamaha Motorcycle Fz 16",
+  "author": "Javier.Herrera",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/c522b1bae9c2425db12d435ecb5e8783"
+ },
+ "rx100": {
+  "title": "Yamaha RX100",
+  "author": "Kamesh.Hamare",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/7615fba3db6e4e1ebd0d11eac80a0050"
+ },
+ "xuv700": {
+  "title": "MAHINDRA XUV 7X0",
+  "author": "rmihir560",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/a7877a0a18ba48af904af0216912b719"
+ },
+ "tataace": {
+  "title": "TATA ACE",
+  "author": "rmihir560",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/a7d929f5c0c74838984fcfb6641c4612"
+ },
+ "eeco": {
+  "title": "MARUTI SUZUKI EECO",
+  "author": "rmihir560",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/c213330eb27d472e81fe7afdaf25bebf"
+ },
+ "eicher": {
+  "title": "EICHER TRUCK",
+  "author": "rmihir560",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/516d4dcfc0d2447ab558f6ed1363efed"
+ },
+ "tractor": {
+  "title": "FORT 3600 INDIAN TRACTOR",
+  "author": "sarthakvermamainyt",
+  "license": "by",
+  "source": "https://sketchfab.com/3d-models/68fffe30eea4457eae371462c93990f9"
+ }
+}
