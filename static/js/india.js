@@ -5,7 +5,7 @@ import { quad, geo, rgb, buildShared, buildReflections } from './tokyo.js';
 import { FONTS, BOARDS, inRanges } from './themes.js';
 import { buildLandmarks } from './landmarks.js';
 
-const SIDEWALK_OUT = HW + 0.5 + 5;
+const SW = () => HW + 0.5 + 5; // sidewalk outer edge
 const FLEX = ['#d8262c', '#f4c20d', '#1f6fd0', '#1e9b4a', '#ffffff', '#ff7a1a', '#7b2cbf', '#0d0d0d'];
 
 function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
@@ -157,7 +157,7 @@ export function buildIndia(scene, track, world, T, plans) {
         const rows = kind === 'forest' && !built ? 6 : 1;
         for (let row = 0; row < rows; row++) {
           if (r() > (row === 0 ? 0.85 : 0.65)) continue;
-          const lat = row === 0 ? SIDEWALK_OUT - 1 - r() * 1.5 : SIDEWALK_OUT + 4 + row * 9 + r() * 6;
+          const lat = row === 0 ? SW() - 1 - r() * 1.5 : SW() + 4 + row * 9 + r() * 6;
           const p = track.sample(d + (r() - 0.5) * 6, side * lat);
           const n = track.nearest(p.x, p.z);
           if (Math.abs(n.lateral) < HW + 1.5) continue;
@@ -178,8 +178,8 @@ export function buildIndia(scene, track, world, T, plans) {
       if (r() < 0.4) continue;
       const side = r() < 0.5 ? 1 : -1;
       for (let row = 0; row < 6; row++) for (let i = 0; i < 6; i++) {
-        const p = track.sample(d + i * 2.2, side * (SIDEWALK_OUT + 6 + row * 2.4));
-        if (Math.abs(track.nearest(p.x, p.z).lateral) < SIDEWALK_OUT + 4) continue;
+        const p = track.sample(d + i * 2.2, side * (SW() + 6 + row * 2.4));
+        if (Math.abs(track.nearest(p.x, p.z).lateral) < SW() + 4) continue;
         bushes.push(p);
       }
     }
@@ -202,8 +202,8 @@ export function buildIndia(scene, track, world, T, plans) {
       const beach = T.water.beach;
       const pos = [], sandPos = [];
       for (let d = d0; d <= d1; d += 8) {
-        const a = track.sample(d, side * (SIDEWALK_OUT + beach)), b = track.sample(d, side * (SIDEWALK_OUT + beach + 2500));
-        const sa = track.sample(d, side * SIDEWALK_OUT);
+        const a = track.sample(d, side * (SW() + beach)), b = track.sample(d, side * (SW() + beach + 2500));
+        const sa = track.sample(d, side * SW());
         pos.push([a.x, a.z, b.x, b.z, a.y - 1.5]); sandPos.push([sa.x, sa.z, a.x, a.z, a.y + 0.1]);
       }
       const strip = (rows, dy, mat) => {
@@ -304,7 +304,7 @@ export function buildIndia(scene, track, world, T, plans) {
     for (let d = 80; d < L - 60; d += 70 + r() * 160) {
       const side = r() < 0.5 ? 1 : -1;
       if (ws(d) === side) continue;
-      const p = track.sample(d, side * (SIDEWALK_OUT - 1.3));
+      const p = track.sample(d, side * (SW() - 1.3));
       const nx = -side * p.tz, nz = side * p.tx;
       const m = new THREE.Matrix4().makeRotationY(Math.atan2(nx, nz)).setPosition(p.x, p.y + 0.17, p.z);
       body.push(new THREE.BoxGeometry(2.4, 2.2, 1.6).translate(0, 1.1, 0).applyMatrix4(m));
@@ -351,7 +351,7 @@ export function buildIndia(scene, track, world, T, plans) {
     for (let d = 200; d < L - 100; d += 380 + r() * 300) {
       const side = r() < 0.5 ? 1 : -1;
       if (ws(d) === side) continue;
-      const p = track.sample(d, side * (SIDEWALK_OUT + 3));
+      const p = track.sample(d, side * (SW() + 3));
       const m = ads.meta[Math.floor(r() * ads.meta.length)];
       const fwd = [-p.tx, 0, -p.tz]; // face oncoming drivers
       const right = [fwd[2], 0, -fwd[0]];

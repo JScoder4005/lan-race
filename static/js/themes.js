@@ -59,7 +59,7 @@ export const THEMES = {
   },
   wayanad: {
     ...INDIA_BASE, lang: 'ml', banner: 'THAMARASSERY GHAT', sky: 'hill', buildRanges: [[0, 0.04], [0.97, 1]], nearH: [5, 9], tall: 0,
-    trees: 'forest', treeDensity: 2.2, tea: true, terrainColors: ['#22351c', '#4d4332'], kiosks: false, hoardings: false, lampSpacing: 140, reflectors: true,
+    trees: 'forest', treeDensity: 2.2, tea: true, shoulder: 'earth', terrainColors: ['#22351c', '#4d4332'], kiosks: false, hoardings: false, lampSpacing: 140, reflectors: true,
     busColors: [0xb3121b, 0xe0e0e0], autoColors: [[0.1, 0.1, 0.1], [0.95, 0.78, 0.05], [0.95, 0.78, 0.05]],
     landmarks: [{ type: 'gateway', at: 'start', label: 'THAMARASSERY GHAT' }, { type: 'viewpoint', at: 'end', label: 'LAKKIDI VIEW POINT' }],
     traffic: { auto: 1, scooter: 2, bus: 3, sedan: 3, suv: 4, hatch: 2, van: 1, truck: 3, delivery: 1 }, hairpins: true,

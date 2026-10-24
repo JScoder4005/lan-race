@@ -11,7 +11,8 @@ MAPS = [
     dict(id='bengaluru', name='BENGALURU', sub='Outer Ring Road', a=(12.99711, 77.66885), b=(13.04769, 77.58095), start='TIN FACTORY', end='BRIGADE SENATE 2'),
     dict(id='chennai', name='CHENNAI', sub='Marina to Besant Nagar', a=(13.06879, 80.28447), b=(13.00071, 80.27122), start='NAPIER BRIDGE', end="ELLIOT'S BEACH"),
     dict(id='mysuru', name='MYSURU', sub='Palace to Chamundi Hills', a=(12.30522, 76.65538), b=(12.27250, 76.67040), start='MYSORE PALACE', end='CHAMUNDI HILLS'),
-    dict(id='wayanad', name='WAYANAD', sub='Thamarassery Ghat', a=(11.48498, 76.01261), b=(11.52057, 76.02035), start='ADIVARAM', end='LAKKIDI'),
+    dict(id='wayanad', name='WAYANAD', sub='Thamarassery Ghat', a=(11.48498, 76.01261), b=(11.52057, 76.02035), start='ADIVARAM', end='LAKKIDI',
+         hw=5.5, min_r=8, hairpins=True, vscale=1.8),  # two-lane ghat: keep every hairpin; climb exaggerated 1.8x
     dict(id='kannur', name='KANNUR - THALASSERY', sub='NH 66', a=(11.87150, 75.36844), b=(11.75375, 75.49247), start='KANNUR', end='THALASSERY'),
     dict(id='kochi', name='ERNAKULAM', sub='Marine Drive to Edappally', a=(9.97848, 76.27577), b=(10.02610, 76.30800), start='MARINE DRIVE', end='EDAPPALLY'),
     dict(id='trivandrum', name='THIRUVANANTHAPURAM', sub='East Fort to Kovalam', a=(8.48291, 76.94694), b=(8.39510, 76.97299), start='EAST FORT', end='KOVALAM'),
@@ -131,17 +132,38 @@ def local_smooth(pts, min_r, rounds=400):
     return pts
 
 
+def taubin(pts, min_r, rounds=800, lam=0.5, mu=-0.53):
+    """Taubin (shrink-free) smoothing around corners tighter than min_r."""
+    n = len(pts)
+    for _ in range(rounds):
+        bad = [i for i in range(2, n - 2) if radius(pts[i - 2], pts[i], pts[i + 2]) < min_r]
+        if not bad: break
+        mask = set()
+        for i in bad: mask.update(range(max(3, i - 10), min(n - 3, i + 11)))
+        for f in (lam, mu):
+            q = list(pts)
+            for i in mask:
+                a, b, c = pts[i - 1], pts[i], pts[i + 1]
+                q[i] = (b[0] + f * ((a[0] + c[0]) / 2 - b[0]), b[1] + f * ((a[1] + c[1]) / 2 - b[1]))
+            pts = q
+    return pts
+
+
 def build(m):
     coords = osrm(m['a'], m['b'])
     lat0 = sum(c[1] for c in coords) / len(coords); lon0 = sum(c[0] for c in coords) / len(coords)
     kx = 111320 * math.cos(math.radians(lat0)); kz = 110574
     pts = [((lon - lon0) * kx, -(lat - lat0) * kz) for lon, lat in coords]
-    pts = resample(remove_loops(resample(pts, 4)), 8)
-    pts = remove_loops(pts, 24, 4)
-    pts = smooth(pts, 4)
-    pts = local_smooth(pts, MIN_R)
+    min_r = m.get('min_r', MIN_R)
+    if m.get('hairpins'):  # ghat: no loop removal, non-shrinking smoothing so hairpins keep their real size
+        pts = local_smooth(taubin(resample(pts, 4), 12), min_r)
+    else:
+        pts = resample(remove_loops(resample(pts, 4)), 8)
+        pts = remove_loops(pts, 24, 4)
+        pts = smooth(pts, 4)
+        pts = local_smooth(pts, min_r)
     route = resample(pts, 4)
-    route = local_smooth(route, MIN_R, 200)
+    route = local_smooth(route, min_r, 200)
     route_len = sum(dist(route[i], route[i + 1]) for i in range(len(route) - 1))
     r8 = resample(route, 8)
     to_ll = lambda x, z: (lat0 - z / kz, lon0 + x / kx)
@@ -165,7 +187,7 @@ def build(m):
     heights = []
     for i in range(len(route)):
         f = i / 8; k = min(int(f), len(hs) - 2); t = f - k
-        heights.append(hs[k] + (hs[k + 1] - hs[k]) * t - base)
+        heights.append((hs[k] + (hs[k + 1] - hs[k]) * t - base) * m.get('vscale', 1))
 
     # Terrain: coarse SRTM grid in a corridor around the road.
     step = 150.0; reach = 1300.0
@@ -180,7 +202,7 @@ def build(m):
             if min((gx - p[0]) ** 2 + (gz - p[1]) ** 2 for p in near) < reach * reach: want.append((i, j))
     gh = elevations([to_ll(x0 + i * step, z0 + j * step) for i, j in want])
     grid = [None] * (nx * nz)
-    for (i, j), h in zip(want, gh): grid[j * nx + i] = round(h - base, 1)
+    for (i, j), h in zip(want, gh): grid[j * nx + i] = round((h - base) * m.get('vscale', 1), 1)
 
     pois = find_pois(m, route, to_ll, lat0, lon0, kx, kz)
     rise = max(heights) - min(heights)
@@ -189,6 +211,7 @@ def build(m):
     return {
         'id': m['id'], 'name': m['name'], 'sub': m['sub'], 'start': m['start'], 'end': m['end'],
         'length': round(route_len, 1), 'origin': [round(lat0, 6), round(lon0, 6)], 'baseElevation': round(base, 1),
+        'roadHalfWidth': m.get('hw', 9.0), 'vScale': m.get('vscale', 1),
         'points': [[round(x, 1), round(z, 1), round(h, 2)] for (x, z), h in zip(route, heights)],
         'terrain': {'x0': round(x0, 1), 'z0': round(z0, 1), 'step': step, 'nx': nx, 'nz': nz, 'h': grid},
         'pois': pois,

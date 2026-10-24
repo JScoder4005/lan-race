@@ -16,9 +16,10 @@ Real roads built from OpenStreetMap routes (sprint from start to finish, two-way
 
 Bengaluru (Tin Factory → Brigade Senate 2) · Chennai · Mysuru · Wayanad ghat · Kannur → Thalassery · Ernakulam · Thiruvananthapuram · Hyderabad · Neon Harbor circuit
 
-- Real elevation from SRTM data: roads climb and dip, and the surrounding terrain follows the hills (the Wayanad ghat climbs about 700 m).
+- Real elevation from SRTM data: roads climb and dip, and the surrounding terrain follows the hills. The Wayanad ghat keeps all its real hairpins on a two-lane road; its climb (about 700 m in reality) is exaggerated 1.8x for drama.
 - Real landmarks along each route from OpenStreetMap/Wikidata, with roadside boards showing their photos from Wikimedia Commons.
-- Local traffic per city: autos, delivery scooters, bikes, lorries and city buses in regional liveries (BMTC, KSRTC, MTC, TGSRTC and private operators). Liveries are recreated in colour and lettering only; official emblems are not included.
+- Local traffic per city: two-wheelers, autos, cars, lorries and city buses in regional liveries (BMTC, KSRTC, MTC, TGSRTC and private operators). Liveries are recreated in colour and lettering only; official emblems are not included.
+- Traffic is a deterministic driving simulation (same for every player): vehicles keep safe gaps, slow for bends, crawl uphill when heavy, overtake, filter between lanes and stop at bus stops. The vehicle mix per city follows published road counts and registration shares (e.g. Bengaluru ~70% two-wheelers).
 - Mass-based collisions: hitting an auto or scooter sends it flying, while buses and lorries barely move.
 - The lobby shows a route map with landmarks and an elevation profile for every map.
 

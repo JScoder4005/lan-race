@@ -3,7 +3,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { waterSideAt, inRanges } from './themes.js';
 import { buildTerrain } from './terrain.js';
 
-export const HW = 9;          // road half width (4 lanes)
+export let HW = 9;            // road half width (4 lanes; ghat roads are narrower)
+export function setRoadWidth(hw) { HW = hw; }
 const SIDEWALK = 5;
 const WALL = 0.5;
 
@@ -221,7 +222,8 @@ function noise(ctx, w, h, base, amp, r) {
 function roadTextures(aniso, style = 'tokyo') {
   const r = rng(11);
   const india = style === 'india';
-  const W = 512, H = 1024, ppm = W / (HW * 2); // 18m x 36m
+  const RW = HW * 2, four = HW >= 8;
+  const W = 512, H = 1024, ppm = W / RW; // road width x 36m
   const [c, x] = canvas(W, H);
   x.fillStyle = india ? '#3a3835' : '#2a2b2e'; x.fillRect(0, 0, W, H);
   noise(x, W, H, [1, 1, 1], india ? 44 : 34, r);
@@ -230,7 +232,7 @@ function roadTextures(aniso, style = 'tokyo') {
     const w = 20 + r() * 120, h = 20 + r() * 160;
     x.fillRect(r() * W, r() * H, w, h);
   }
-  for (const lane of [2.25, 6.75, 11.25, 15.75]) { // tire wear lines
+  for (const lane of (four ? [1, 3, 5, 7] : [1, 3]).map((k) => k * RW / (four ? 8 : 4))) { // tire wear lines
     for (const off of [-0.8, 0.8]) {
       const g = x.createLinearGradient((lane + off - 0.4) * ppm, 0, (lane + off + 0.4) * ppm, 0);
       g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, 'rgba(0,0,0,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)');
@@ -244,18 +246,18 @@ function roadTextures(aniso, style = 'tokyo') {
   };
   if (india) {
     x.globalAlpha = 0.55;
-    for (let y = 0; y < 36; y += 6) { paint(0.35 * ppm, y * ppm, 0.15 * ppm, 3 * ppm); paint((18 - 0.5) * ppm, y * ppm, 0.15 * ppm, 3 * ppm); }
-    for (const lx of [4.5, 13.5]) for (let y = 0; y < 36; y += 12) paint((lx - 0.06) * ppm, y * ppm, 0.12 * ppm, 4 * ppm);
+    for (let y = 0; y < 36; y += 6) { paint(0.35 * ppm, y * ppm, 0.15 * ppm, 3 * ppm); paint((RW - 0.5) * ppm, y * ppm, 0.15 * ppm, 3 * ppm); }
+    if (four) for (const lx of [RW / 4, RW * 3 / 4]) for (let y = 0; y < 36; y += 12) paint((lx - 0.06) * ppm, y * ppm, 0.12 * ppm, 4 * ppm);
     x.globalAlpha = 0.8;
-    x.fillStyle = '#d9a316'; x.fillRect((9 - 0.28) * ppm, 0, 0.15 * ppm, H); x.fillRect((9 + 0.13) * ppm, 0, 0.15 * ppm, H);
+    x.fillStyle = '#d9a316'; x.fillRect((HW - 0.28) * ppm, 0, 0.15 * ppm, H); x.fillRect((HW + 0.13) * ppm, 0, 0.15 * ppm, H);
     x.globalAlpha = 1;
     for (let i = 0; i < 26; i++) { // potholes / tar patches
       x.fillStyle = r() < 0.5 ? 'rgba(12,11,10,0.55)' : 'rgba(80,76,70,0.35)';
       x.beginPath(); x.ellipse(r() * W, r() * H, 6 + r() * 26, 5 + r() * 20, r() * 3, 0, 7); x.fill();
     }
   } else {
-    paint(0.35 * ppm, 0, 0.2 * ppm, H); paint((18 - 0.55) * ppm, 0, 0.2 * ppm, H);
-    for (const lx of [4.5, 9, 13.5]) for (let y = 0; y < 36; y += 12) paint((lx - 0.08) * ppm, y * ppm, 0.16 * ppm, 6 * ppm);
+    paint(0.35 * ppm, 0, 0.2 * ppm, H); paint((RW - 0.55) * ppm, 0, 0.2 * ppm, H);
+    for (const lx of [RW / 4, RW / 2, RW * 3 / 4]) for (let y = 0; y < 36; y += 12) paint((lx - 0.08) * ppm, y * ppm, 0.16 * ppm, 6 * ppm);
   }
   const map = tex(c, { aniso });
 
@@ -548,7 +550,10 @@ export function buildWorld(scene, track, renderer, T) {
   }
   const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.85, side: THREE.DoubleSide });
   const walkTex = simpleTex(256, 256, (x, w, h) => {
-    if (india) {
+    if (T.shoulder === 'earth') { // ghat: laterite gravel shoulder, no footpath
+      x.fillStyle = '#5a4434'; x.fillRect(0, 0, w, h); noise(x, w, h, [1, 0.85, 0.7], 48, r);
+      for (let i = 0; i < 400; i++) { x.fillStyle = `rgba(${r() < 0.5 ? '30,24,18' : '120,100,80'},0.5)`; x.fillRect(r() * w, r() * h, 2 + r() * 4, 2 + r() * 4); }
+    } else if (india) {
       x.fillStyle = '#6a5d52'; x.fillRect(0, 0, w, h); noise(x, w, h, [1, 0.9, 0.8], 36, r);
       x.strokeStyle = 'rgba(30,24,20,0.55)'; x.lineWidth = 2;
       for (let i = 0; i <= 8; i++) { x.beginPath(); x.moveTo(0, i * h / 8); x.lineTo(w, i * h / 8); x.stroke(); }
@@ -563,7 +568,8 @@ export function buildWorld(scene, track, renderer, T) {
   const walls = [], walks = [];
   for (const side of [1, -1]) {
     walls.push(ribbon(track, wallProfile, side, wallV));
-    walks.push(ribbon(track, [[HW + WALL, 0.17], [HW + WALL + SIDEWALK, 0.17], [HW + WALL + SIDEWALK + 0.02, 0]], side, 3));
+    const kerbH = T.shoulder === 'earth' ? 0.02 : 0.17;
+    walks.push(ribbon(track, [[HW + WALL, kerbH], [HW + WALL + SIDEWALK, kerbH], [HW + WALL + SIDEWALK + 0.02, 0]], side, 3));
   }
   scene.add(new THREE.Mesh(mergeGeometries(walls), wallMat));
   scene.add(new THREE.Mesh(mergeGeometries(walks), walkMat));

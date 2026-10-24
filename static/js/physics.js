@@ -85,7 +85,7 @@ export class CarPhysics {
     acc -= 0.00078 * fwd * Math.abs(fwd) + 0.25 * Math.sign(fwd) * Math.min(1, Math.abs(fwd));
     if (inp.handbrake) acc -= Math.sign(fwd) * Math.min(Math.abs(fwd) * 4, 5);
     const along = fx * this.tx + fz * this.tz;
-    acc -= 9.81 * Math.max(-0.2, Math.min(0.2, this.grade)) * along; // gravity on slopes
+    acc -= 9.81 * Math.max(-0.3, Math.min(0.3, this.grade)) * along; // gravity on slopes
     this.pitch = Math.atan(this.grade * along);
     fwd += acc * dt;
 

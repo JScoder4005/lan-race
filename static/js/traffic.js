@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rng } from './track.js';
+import { rng, HW } from './track.js';
 import { gltfLoader, normalizeVehicle } from './cars.js';
 import { collide } from './physics.js';
 import { FONTS } from './themes.js';
@@ -20,24 +20,51 @@ const PAINT = [0xe8e8e8, 0xb9bcc2, 0x1a1c20, 0x7a1f1f, 0x1d2b4f, 0x55595f, 0xc9b
 const LOOP_LANES = [-6.75, -2.25, 2.25, 6.75], LOOP_SPEED = [15, 19, 23, 27];
 const LOOP_SLOW = ['truck', 'delivery', 'garbage-truck', 'van', 'sedan', 'firetruck'];
 const LOOP_FAST = ['sedan', 'sedan', 'taxi', 'taxi', 'suv', 'suv-luxury', 'van', 'sedan-sports', 'hatchback-sports', 'ambulance'];
-// Two-way Indian roads (left-hand traffic): per direction a kerb two-wheeler lane, a slow lane and a fast lane.
-const ROAD_LANES = [{ lat: 7.9, speed: 12, kinds: ['scooter', 'bike'], perKm: 4.5, wobble: 0.35 },
-  { lat: 6.0, speed: 13, kinds: ['auto', 'bus', 'lorry', 'delivery'], perKm: 3.5, wobble: 0.22 },
-  { lat: 2.25, speed: 19, kinds: ['sedan', 'suv', 'hatch', 'van', 'auto'], perKm: 3, wobble: 0.08 }];
+// Driver model per vehicle class (Intelligent Driver Model): desired speed m/s (+/- spread), max accel, comfy braking,
+// time headway, standstill gap, lateral grip for curve speed, slowdown factor per unit uphill grade, lane-change rate m/s.
+const CLASS = {
+  tw: { v: 13.5, vr: 0.25, a: 2.2, b: 3.5, T: 0.8, s0: 1.2, alat: 3.2, g: 3, lc: 1.8, wob: 0.22 },
+  auto: { v: 11, vr: 0.15, a: 1.0, b: 2.5, T: 1.1, s0: 1.8, alat: 2.2, g: 9, lc: 1.0, wob: 0.12 },
+  car: { v: 17, vr: 0.22, a: 1.8, b: 3.0, T: 1.3, s0: 2.0, alat: 3.2, g: 1.5, lc: 1.0, wob: 0.03 },
+  heavy: { v: 13, vr: 0.1, a: 0.7, b: 2.0, T: 1.7, s0: 3.0, alat: 1.6, g: 14, lc: 0.7, wob: 0.02 },
+};
+const classOf = (type) => (type === 'scooter' || type === 'bike' ? 'tw' : type === 'auto' ? 'auto'
+  : /^(bus|lorry|garbage-truck|firetruck)/.test(type) ? 'heavy' : 'car');
+// On-road vehicle mix per route (shares of vehicles) and vehicles per km per direction, from classified counts where
+// published: Bengaluru intersection counts (>70% 2W, 15% car, 4% auto), Chennai arterial (58/26/12/4), Kochi mobility plan
+// 2024 (~60% 2W, ~27% car) + RITES MG Road (14% auto, 11% bus), Hyderabad (50/16/16 auto/5 bus, 9% cycles folded into 2W),
+// Kerala/Mysuru registration shares as proxies. Thamarassery ghat has no published counts: night-time mix with lorries,
+// since multi-axle trucks may only use the ghat after 8 pm.
+const MIX = {
+  bengaluru: { tw: 0.68, car: 0.17, auto: 0.05, bus: 0.06, truck: 0.04, density: 15 },
+  chennai: { tw: 0.56, car: 0.26, auto: 0.12, bus: 0.04, truck: 0.02, density: 13 },
+  mysuru: { tw: 0.60, car: 0.22, auto: 0.08, bus: 0.05, truck: 0.05, density: 10 },
+  kochi: { tw: 0.55, car: 0.27, auto: 0.10, bus: 0.07, truck: 0.01, density: 13 },
+  trivandrum: { tw: 0.58, car: 0.25, auto: 0.08, bus: 0.06, truck: 0.03, density: 11 },
+  kannur: { tw: 0.55, car: 0.25, auto: 0.08, bus: 0.06, truck: 0.06, density: 10 },
+  hyderabad: { tw: 0.57, car: 0.17, auto: 0.17, bus: 0.06, truck: 0.03, density: 13 },
+  wayanad: { tw: 0.18, car: 0.42, auto: 0.03, bus: 0.10, truck: 0.27, density: 8 },
+};
+const DT = 0.1, T0 = -12; // fixed sim step; every client replays the same deterministic sim from T0 on the race clock
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
 const KIND_MODELS = { sedan: ['sedan'], suv: ['suv', 'suv-luxury'], hatch: ['hatchback-sports', 'sedan-sports'], van: ['van'], truck: ['truck', 'garbage-truck'], delivery: ['delivery'],
   auto: ['auto'], scooter: ['scooter'], bike: ['bike'], bus: ['bus'], lorry: ['lorry'] };
 
 // Bus liveries: operator lettering, colours and real route boards per city.
 const LIVERY = {
   bmtc: { top: '#a6d36a', bottom: '#1f6e2e', stripe: '#f2c200', name: 'BMTC', local: 'ಬೆಂಗಳೂರು ಮಹಾನಗರ ಸಾರಿಗೆ ಸಂಸ್ಥೆ', lang: 'kn', routes: ['500D HEBBAL', '500DA KR PURAM', '500K KADUGODI', '290E MAJESTIC'] },
+  'bmtc-blue': { top: '#eef3f7', bottom: '#2a6fb5', stripe: '#7fd0e8', name: 'BMTC', local: 'ಬೆಂಗಳೂರು ಮಹಾನಗರ ಸಾರಿಗೆ ಸಂಸ್ಥೆ', lang: 'kn', routes: ['500D HEBBAL', '500DA KR PURAM', '500K KADUGODI', '290E MAJESTIC'] },
   vajra: { top: '#f4f6f8', bottom: '#1f4fbf', stripe: '#7fb2ff', name: 'VAJRA · BMTC', local: 'ವಜ್ರ', lang: 'kn', routes: ['V-500D HEBBAL', 'V-500CA SILK BOARD', 'KIA-9 AIRPORT'] },
   'ksrtc-ka': { top: '#e9e9e9', bottom: '#c4161c', stripe: '#f2a800', name: 'KSRTC', local: 'ಕರ್ನಾಟಕ ರಾಜ್ಯ ರಸ್ತೆ ಸಾರಿಗೆ ನಿಗಮ', lang: 'kn', routes: ['201 CHAMUNDI HILLS', '150 CBS', '303 KRS DAM'] },
   'ksrtc-kl': { top: '#f2d23a', bottom: '#c41c1c', stripe: '#1a1a1a', name: 'KSRTC', local: 'കെ.എസ്.ആർ.ടി.സി', lang: 'ml', routes: ['FAST KOZHIKODE', 'KALPETTA', 'THALASSERY', 'VYTTILA', 'KOVALAM', 'EAST FORT'] },
   private: { top: '#ffffff', bottom: '#2a7de1', stripe: '#ff3d7f', name: 'SREE KRISHNA', local: 'ശ്രീ കൃഷ്ണ', lang: 'ml', routes: ['KANNUR', 'IRITTY', 'ALUVA', 'FORT KOCHI', 'VIZHINJAM'] },
-  mtc: { top: '#f0e6c8', bottom: '#8a1c1c', stripe: '#f2c200', name: 'MTC', local: 'மாநகர் போக்குவரத்துக் கழகம்', lang: 'ta', routes: ['23C BESANT NAGAR', '12B T.NAGAR', '5B BROADWAY'] },
+  mtc: { top: '#efe2c0', bottom: '#6e3b1f', stripe: '#f2c200', name: 'MTC', local: 'மாநகர் போக்குவரத்துக் கழகம்', lang: 'ta', routes: ['23C BESANT NAGAR', '12B T.NAGAR', '5B BROADWAY'] },
   tgsrtc: { top: '#f4f6f8', bottom: '#1e8a3a', stripe: '#d62828', name: 'TGSRTC', local: 'తెలంగాణ ఆర్టీసీ', lang: 'te', routes: ['1Z SECUNDERABAD', '8A AFZALGUNJ', '49M KOTI'] },
 };
-const CITY_BUSES = { bengaluru: ['bmtc', 'bmtc', 'vajra'], mysuru: ['ksrtc-ka'], chennai: ['mtc'], hyderabad: ['tgsrtc'],
+const CITY_BUSES = { bengaluru: ['bmtc-blue', 'bmtc', 'vajra'], mysuru: ['ksrtc-ka'], chennai: ['mtc'], hyderabad: ['tgsrtc'],
   wayanad: ['ksrtc-kl'], kannur: ['ksrtc-kl', 'private', 'private'], kochi: ['ksrtc-kl', 'private'], trivandrum: ['ksrtc-kl', 'private'] };
 // Destination boards that make sense on each route.
 const CITY_ROUTES = {
@@ -256,23 +283,33 @@ export class Traffic {
         for (let i = 0; i < count; i++) {
           let type = pool[Math.floor(r() * pool.length)];
           if (type === 'firetruck' && r() < 0.6) type = 'truck';
-          plan.push({ type, lat, dir: 1, speed: LOOP_SPEED[li], wobble: 0.05, d0: 140 + ((i + r() * 0.5) / count) * (L - 300) });
+          plan.push({ type, home: lat, dir: 1, vDes: LOOP_SPEED[li], d0: 140 + ((i + r() * 0.5) / count) * (L - 300) });
         }
       });
     } else {
-      const weights = { ...T.traffic, bike: (T.traffic.scooter ?? 0) * 0.8, lorry: T.traffic.truck ?? 1 };
-      for (const dir of [1, -1]) for (const lane of ROAD_LANES) {
-        const kinds = lane.kinds.filter((k) => (weights[k] ?? 0) > 0);
-        if (!kinds.length) continue;
-        const total = kinds.reduce((s, k) => s + weights[k], 0);
-        const count = Math.max(2, Math.round((L / 1000) * lane.perKm));
-        for (let i = 0; i < count; i++) {
-          let x = r() * total, kind = kinds[0];
-          for (const k of kinds) { x -= weights[k]; if (x <= 0) { kind = k; break; } }
-          let opts = KIND_MODELS[kind];
-          if (kind === 'bus') opts = busTypes;
-          const type = opts[Math.floor(r() * opts.length)];
-          plan.push({ type, lat: lane.lat * dir, dir, speed: lane.speed * (dir > 0 ? 1 : 1.04), wobble: lane.wobble, d0: ((i + 0.15 + r() * 0.5) / count) * (L + 60), gap: (L + 60) / count });
+      const weights = { ...T.traffic };
+      const four = HW >= 8, LAT = four ? { tw: 0.88 * HW, slow: 0.67 * HW, fast: 0.25 * HW } : { tw: 0.8 * HW, slow: 0.45 * HW, fast: 0.45 * HW };
+      this.lanes = { four, ...LAT, between: 0.45 * HW, kerb: HW };
+      const mix = MIX[mapId] || MIX.bengaluru;
+      const pickW = (w) => { const ks = Object.keys(w).filter((k) => w[k] > 0); let x = r() * ks.reduce((a, k) => a + w[k], 0); for (const k of ks) { x -= w[k]; if (x <= 0) return k; } return ks[0]; };
+      const carKinds = { sedan: weights.sedan ?? 4, suv: weights.suv ?? 2, hatch: weights.hatch ?? 3, van: weights.van ?? 1, delivery: weights.delivery ?? 0.5 };
+      for (const dir of [1, -1]) {
+        const lanes = { tw: [], between: [], slow: [], fast: [] };
+        const total = Math.round((L / 1000) * mix.density);
+        for (let i = 0; i < total; i++) {
+          const cls = pickW({ tw: mix.tw, car: mix.car, auto: mix.auto, bus: busTypes.length ? mix.bus : 0, truck: mix.truck });
+          let type, lane;
+          if (cls === 'tw') { type = r() < 0.55 ? 'bike' : 'scooter'; const q = r(); lane = q < 0.6 || !four ? 'tw' : q < 0.85 ? 'between' : 'fast'; }
+          else if (cls === 'auto') { type = 'auto'; lane = 'slow'; }
+          else if (cls === 'bus') { type = busTypes[Math.floor(r() * busTypes.length)]; lane = 'slow'; }
+          else if (cls === 'truck') { type = r() < 0.75 ? 'lorry' : 'truck'; lane = 'slow'; }
+          else { const k = pickW(carKinds); const opts = KIND_MODELS[k]; type = opts[Math.floor(r() * opts.length)]; lane = r() < 0.65 ? 'fast' : 'slow'; }
+          if (!all[type]) continue;
+          lanes[lane].push(type);
+        }
+        for (const lane in lanes) {
+          const list = lanes[lane], n = list.length, home = lane === 'between' ? this.lanes.between : LAT[lane];
+          list.forEach((type, i) => plan.push({ type, home, dir, d0: ((i + 0.15 + r() * 0.5) / n) * (L + 80) - 40 }));
         }
       }
     }
@@ -307,13 +344,14 @@ export class Traffic {
         const dims = m.dims;
         this.cars.push({
           ...p, meshes, idx: i, gi: total + i, half: dims.l / 2, r: Math.min(1.3, (dims.w / 2) * 0.95), mass: MASS[m.massKey || type] || 1500,
-          x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0, yawRate: 0, on: true, ph: r() * 6.28, ph2: r() * 6.28, amp: Math.min(12, (p.gap || 40) * 0.25), knocked: null,
+          x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0, yawRate: 0, on: true, ph: r() * 6.28, ph2: r() * 6.28, knocked: null, w: dims.w,
         });
       });
       total += n;
       for (const k in meshes) if (meshes[k].instanceColor) meshes[k].instanceColor.needsUpdate = true;
     }
     this.cars.sort((a, b) => a.gi - b.gi);
+    this.initSim(track, scene, busTypes.length > 0 && !!T.traffic && !track.closed && HW >= 8); // no stops on narrow ghats
     // headlight beams on the road
     this.beams = new THREE.InstancedMesh(new THREE.PlaneGeometry(4, 16).rotateX(-Math.PI / 2).translate(0, 0.06, 10),
       new THREE.MeshBasicMaterial({ map: beamTexture(), color: 0xfff1d8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }), this.cars.length);
@@ -323,6 +361,183 @@ export class Traffic {
     this._s = new THREE.Vector3(1, 1, 1); this._z = new THREE.Vector3(0, 0, 0);
     this._tmp = {}; this._c = new THREE.Color();
     this.onKnock = null;
+  }
+
+  // ---------- driving sim ----------
+  initSim(track, scene, busStops) {
+    const L = this.Lq = Math.round(track.length), S = 4, n = Math.floor(L / S) + 2;
+    // Curve speed (sqrt of radius, i.e. for 1 m/s^2 lateral grip) with braking ahead of bends, and grade; quantized so
+    // every client computes identical numbers.
+    const vc = new Float32Array(n), gr = new Float32Array(n), fwd = new Float32Array(n), rev = new Float32Array(n);
+    const a = {}, b = {}, c = {};
+    for (let k = 0; k < n; k++) {
+      const d = k * S;
+      track.sample(this.closed ? (d - 6 + L) % L : Math.max(0, d - 6), 0, a);
+      track.sample(this.closed ? (d + 6) % L : Math.min(track.length, d + 6), 0, b);
+      track.sample(Math.min(d, track.length), 0, c);
+      let dy = b.yaw - a.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI;
+      const R = Math.min(1600, 12 / Math.max(1e-4, Math.abs(dy)));
+      vc[k] = Math.round(Math.sqrt(R) * 4) / 4;
+      gr[k] = Math.round((c.grade || 0) * 200) / 200;
+    }
+    const brake = 2 * S; // v^2 headroom per sample at 1 m/s^2
+    for (let pass = 0; pass < (this.closed ? 2 : 1); pass++) {
+      for (let k = n - 1; k >= 0; k--) { const nx = k + 1 < n ? fwd[k + 1] : this.closed ? fwd[0] : 40; fwd[k] = Math.min(vc[k], Math.sqrt(nx * nx + brake)); }
+      for (let k = 0; k < n; k++) { const pv = k > 0 ? rev[k - 1] : this.closed ? rev[n - 1] : 40; rev[k] = Math.min(vc[k], Math.sqrt(pv * pv + brake)); }
+    }
+    if (!this.closed) for (let k = 0; k < n; k++) { fwd[k] = fwd[k] || vc[k]; rev[k] = rev[k] || vc[k]; }
+    this.prof = { S, n, fwd, rev, gr };
+
+    // Bus stops (kerb side, both directions) with simple shelters.
+    this.stops = [];
+    if (busStops) {
+      const geo = mergeGeometries([new THREE.BoxGeometry(4.2, 0.12, 2).translate(0.4, 2.7, 0), new THREE.BoxGeometry(0.06, 1.9, 4.2).translate(1.35, 1.25, 0),
+        new THREE.BoxGeometry(0.1, 2.7, 0.1).translate(-0.5, 1.35, 1.9), new THREE.BoxGeometry(0.1, 2.7, 0.1).translate(-0.5, 1.35, -1.9), new THREE.BoxGeometry(0.5, 0.45, 3.4).translate(1.0, 0.45, 0)]);
+      const sh = [], ss = {};
+      for (let u = 380; u < L - 250; u += 720) this.stops.push(u);
+      for (const dir of [1, -1]) for (const u of this.stops) {
+        const uu = u + (dir < 0 ? 260 : 0); if (uu > L - 150) continue;
+        track.sample(dir > 0 ? uu : L - uu, dir * (HW + 3.2), ss);
+        sh.push(new THREE.Matrix4().compose(new THREE.Vector3(ss.x, ss.y, ss.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ss.yaw + (dir > 0 ? 0 : Math.PI)), new THREE.Vector3(1, 1, 1)));
+      }
+      if (sh.length) {
+        const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0x2c5f8a, roughness: 0.6, metalness: 0.3 }), sh.length);
+        sh.forEach((m, i) => im.setMatrixAt(i, m));
+        scene.add(im); this.meshes.push(im);
+      }
+    }
+    this.groups = this.closed ? [[]] : [[], []];
+    for (const c of this.cars) {
+      const K = CLASS[classOf(c.type)];
+      const rr = mulberry(c.gi * 7919 + 31);
+      c.K = K; c.cls = classOf(c.type);
+      c.vDes = (c.vDes || K.v) * (1 - K.vr + 2 * K.vr * rr());
+      c.bus = /^bus/.test(c.type);
+      (this.groups[c.dir > 0 ? 0 : 1] ||= []).push(c);
+    }
+    this.ts = undefined;
+  }
+
+  resetSim() {
+    for (const c of this.cars) {
+      c.u = c.d0; c.m = c.mt = c.home; c.mv = 0; c.v = c.vDes * 0.7; c.acc = 0; c.uP = c.u; c.mP = c.m;
+      c.active = true; c.stopIdx = 0; c.stopping = 0; c.dwell = 0; c.lcT = c.gi % 10; c.rnd = mulberry(c.gi * 7919 + 17);
+    }
+    for (const g of this.groups) g.sort((a, b) => a.u - b.u);
+    this.ts = T0;
+  }
+
+  // Nearest vehicle ahead (dir=1) or behind (dir=-1) of car index i whose body overlaps lateral position m.
+  scan(g, i, m, w, dir, range) {
+    const n = g.length, me = g[i], L = this.Lq;
+    for (let k = 1; k < Math.min(n, 40); k++) {
+      let j = i + k * dir;
+      if (this.closed) j = (j + n) % n; else if (j < 0 || j >= n) return null;
+      const o = g[j];
+      if (!o.active) continue;
+      let du = (o.u - me.u) * dir;
+      if (this.closed && du < 0) du += L;
+      if (du > range) return null;
+      if (Math.abs(o.m - m) < (o.w + w) / 2 + 0.35) return { c: o, gap: du - o.half - me.half };
+    }
+    return null;
+  }
+
+  step() {
+    const P = this.prof, L = this.Lq, lanes = this.lanes;
+    for (const g of this.groups) {
+      const n = g.length;
+      for (let i = 0; i < n; i++) {
+        const c = g[i], K = c.K;
+        c.uP = c.u; c.mP = c.m;
+        if (!c.active) { // waiting to enter at the start of an open road
+          const first = g.find((o) => o.active && Math.abs(o.m - c.home) < (o.w + c.w) / 2 + 0.35);
+          if (!first || first.u > -40 + 14 + c.half) { c.active = true; c.u = c.uP = -45; c.v = Math.min(c.vDes, first ? first.v : c.vDes); c.m = c.mt = c.mP = c.home; c.stopIdx = 0; }
+          continue;
+        }
+        // desired speed: driver, grade (heavy vehicles crawl uphill) and the curve profile ahead
+        const d = c.dir > 0 ? c.u : L - c.u;
+        const k = Math.max(0, Math.min(P.n - 1, Math.floor(d / P.S)));
+        const grade = P.gr[k] * c.dir;
+        let v0 = c.vDes / (1 + K.g * Math.max(0, grade) + (c.cls === 'heavy' ? K.g * 0.5 * Math.max(0, -grade) : 0));
+        v0 = Math.max(1, Math.min(v0, (c.dir > 0 ? P.fwd[k] : P.rev[k]) * Math.sqrt(K.alat)));
+        // leader (anything overlapping our lateral position), or the bus stop we are pulling into
+        const ld = this.scan(g, i, c.m, c.w, 1, 160);
+        let gap = ld ? ld.gap : 1e9, vl = ld ? ld.c.v : 0;
+        const stopsFor = c.bus || c.cls === 'auto';
+        if (stopsFor && this.stops.length && !this.closed) {
+          const list = this.stops, off = (c.dir < 0 ? 260 : 0) + (c.bus ? 0 : 140);
+          while (c.stopIdx < list.length && list[c.stopIdx] + off < c.u - 2) c.stopIdx++;
+          const us = c.stopIdx < list.length ? list[c.stopIdx] + off : 1e9;
+          if (!c.stopping && us - c.u < 150 && us - c.u > 20) c.stopping = c.bus || c.rnd() < 0.3 ? 1 : -1;
+          if (c.stopping === 1) {
+            c.mt = HW - c.w / 2 - 0.3;
+            const sg = us - c.u - c.half;
+            if (sg < gap) { gap = sg; vl = 0; }
+            if (c.v < 0.3 && sg < 4) {
+              c.dwell += DT;
+              if (c.dwell > (c.bus ? 12 : 5) + c.rnd() * 6) { c.stopIdx++; c.stopping = 0; c.dwell = 0; c.mt = c.home; }
+            }
+          } else if (c.stopping === -1 && us - c.u < 0) { c.stopping = 0; c.stopIdx++; }
+        }
+        // Intelligent Driver Model
+        const v = c.v, r = v / v0, r2 = r * r;
+        let acc = K.a * (1 - r2 * r2);
+        if (gap < 1e8) {
+          const sStar = K.s0 + Math.max(0, v * K.T + (v * (v - vl)) / (2 * Math.sqrt(K.a * K.b)));
+          const q = sStar / Math.max(0.2, gap);
+          acc -= K.a * q * q;
+        }
+        acc = Math.max(-8, Math.min(K.a, acc));
+        c.acc = acc;
+        c.v = Math.max(0, v + acc * DT);
+        c.u += c.v * DT;
+        // lane changes (MOBIL-lite): every second, overtake a slow leader or drift back to the home lane
+        if (--c.lcT <= 0) {
+          c.lcT = 10;
+          if (!c.stopping && Math.abs(c.m - c.mt) < 0.2) this.laneChange(g, i, c, ld, v0, lanes);
+        }
+        const dm = c.mt - c.m;
+        c.mv = Math.max(-K.lc, Math.min(K.lc, dm * 1.2));
+        c.m += c.mv * DT;
+        if (this.closed) { if (c.u >= L) { c.u -= L; c.uP -= L; } }
+        else if (c.u > L + 45) { c.active = false; c.u = c.uP = -1e6; }
+      }
+      // keep sorted by position (nearly sorted already: insertion sort)
+      for (let i = 1; i < n; i++) {
+        const c = g[i]; let j = i - 1;
+        while (j >= 0 && g[j].u > c.u) { g[j + 1] = g[j]; j--; }
+        g[j + 1] = c;
+      }
+    }
+    this.ts += DT;
+  }
+
+  laneChange(g, i, c, ld, v0, lanes) {
+    let cands;
+    if (!lanes) cands = LOOP_LANES;
+    else if (c.cls === 'tw') cands = lanes.four ? [lanes.tw, lanes.between, lanes.fast] : [lanes.tw, 0.3 * HW];
+    else if (!lanes.four) return;
+    else cands = [lanes.slow, lanes.fast];
+    const blocked = ld && ld.gap < 35 && ld.c.v < v0 * 0.8;
+    const safe = (m) => {
+      const a = this.scan(g, i, m, c.w, 1, 150), b = this.scan(g, i, m, c.w, -1, 80);
+      if (b && b.gap < Math.max(6, b.c.v * 0.9 + (b.c.v - c.v) * 1.5)) return -1;
+      if (a && a.gap < Math.max(10, c.v * 1.0)) return -1;
+      return a ? Math.min(a.c.v + a.gap * 0.05, v0) : v0;
+    };
+    if (blocked) {
+      let best = ld.c.v + 1.5, pick = null;
+      for (const m of cands) {
+        if (Math.abs(m - c.mt) < 0.3) continue;
+        const q = safe(m);
+        if (q > best) { best = q; pick = m; }
+      }
+      if (pick !== null) c.mt = pick;
+    } else if (Math.abs(c.mt - c.home) > 0.3 && c.rnd() < 0.5) {
+      const a = this.scan(g, i, c.home, c.w, 1, 150);
+      if ((!a || a.gap > 40 || a.c.v > c.v) && safe(c.home) > 0) c.mt = c.home;
+    }
   }
 
   setEnabled(on) {
@@ -368,7 +583,16 @@ export class Traffic {
   // t: seconds on the shared race clock
   update(t, dt = 0.016, camX = 0, camZ = 0) {
     if (!this.enabled) return;
-    const s = this._tmp, L = this.track.length, E = this._e, col = this._c;
+    // Race clock (small t): replay deterministically from T0 so all players see the same traffic. Menu: free-run.
+    const raceClock = t < 7200;
+    if (this.ts === undefined || (raceClock && (t < this.ts - 0.5 || t > this.ts + 30)) || (!raceClock && Math.abs(t - this.ts) > 30)) {
+      this.resetSim();
+      if (!raceClock) this.ts = t;
+    }
+    let guard = 0;
+    while (this.ts < t && guard++ < 40000) this.step();
+    const alpha = Math.max(0, Math.min(1, 1 - (this.ts - t) / DT));
+    const s = this._tmp, L = this.track.length, E = this._e, col = this._c, Lq = this.Lq;
     for (const c of this.cars) {
       let pitch = 0, roll = 0, brake = 1;
       if (c.knocked) {
@@ -393,25 +617,20 @@ export class Traffic {
         if ((k.rest > 6 && far) || k.t > 25) c.knocked = null;
         c.on = true;
       } else {
-        let d;
-        // gentle speed changes (never enough to reach the vehicle ahead in the same lane)
-        const mod = c.amp * Math.sin(t * 0.11 + c.ph);
-        const vmod = c.amp * 0.11 * Math.cos(t * 0.11 + c.ph);
-        brake = vmod < -0.6 ? 4 : 1;
-        if (this.closed) d = c.d0 + c.speed * t + mod;
-        else {
-          const span = L + 60;
-          const u = (((c.d0 + c.speed * t + mod) % span) + span) % span - 30;
-          d = c.dir > 0 ? u : L - u;
-        }
-        c.on = this.closed || (d > 0 && d < L);
-        const lat = c.lat + c.wobble * Math.sin(t * 0.7 + c.ph2);
+        let du = c.u - c.uP;
+        if (this.closed && du < -Lq / 2) du += Lq;
+        const u = c.uP + du * alpha, m = c.mP + (c.m - c.mP) * alpha;
+        const d = this.closed ? ((u % L) + L) % L : c.dir > 0 ? u : L - u;
+        c.on = c.active && (this.closed || (d > 0 && d < L));
+        brake = c.acc < -0.6 || c.v < 0.3 ? 4 : 1;
+        const lat = m * c.dir + c.K.wob * Math.sin(t * 0.7 + c.ph2) * Math.min(1, c.v / 5);
         this.track.sample(d, lat, s);
         c.x = s.x; c.z = s.z; c.y = s.y;
-        c.yaw = c.dir > 0 ? s.yaw : s.yaw + Math.PI;
-        const v = (c.speed + vmod) * c.dir;
-        c.vx = s.tx * v; c.vz = s.tz * v; c.dist = s.dist;
+        const steer = Math.atan2(c.mv, Math.max(2, c.v));
+        c.yaw = (c.dir > 0 ? s.yaw : s.yaw + Math.PI) + steer;
+        c.vx = Math.sin(c.yaw) * c.v; c.vz = Math.cos(c.yaw) * c.v; c.dist = s.dist;
         pitch = -Math.atan(s.grade * c.dir);
+        if (c.cls === 'tw') roll = Math.max(-0.35, Math.min(0.35, -steer * 2.5));
         if (!c.on) { c.x = c.z = 1e6; }
       }
       E.set(pitch, c.yaw, roll);

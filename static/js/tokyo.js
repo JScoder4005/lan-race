@@ -9,7 +9,7 @@ const BLADES = ['ラーメン', '居酒屋', 'カラオケ', 'ホテル', '寿�
 const SHOPS = [['コンビニ', 'konbini'], ['ラーメン', 'noren'], ['居酒屋', 'noren'], ['カラオケ', 'neon'], ['パチンコ', 'pachinko'],
   ['寿司', 'noren'], ['書店', 'warm'], ['薬局', 'konbini']];
 const NEON = ['#ff2e88', '#39e6ff', '#ffd23f', '#7cff6b', '#b56bff', '#ff5a36', '#ffffff', '#ff77ff'];
-const SIDEWALK_OUT = HW + 0.5 + 5;
+const SW = () => HW + 0.5 + 5; // sidewalk outer edge
 
 export function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
 export function tex(c) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
@@ -222,7 +222,7 @@ export function buildTokyo(scene, track, world) {
     const side = r() < 0.5 ? 1 : -1;
     const n = 1 + Math.floor(r() * 3);
     for (let i = 0; i < n; i++) {
-      const p = track.sample(d + i * 1.1, side * (SIDEWALK_OUT - 0.55));
+      const p = track.sample(d + i * 1.1, side * (SW() - 0.55));
       const nx = -side * p.tz, nz = side * p.tx; // toward road
       const m = new THREE.Matrix4().makeRotationY(Math.atan2(nx, nz)).setPosition(p.x, 0.17 + 0.95, p.z);
       vb.push(new THREE.BoxGeometry(1.0, 1.9, 0.75).applyMatrix4(m));
@@ -302,7 +302,7 @@ export function buildShared(scene, track, world, r, opts = {}) {
   for (let d = 15; d < L; d += 34) {
     for (const side of [1, -1]) {
       if (inTunnel(d) || skipPoles(d, side) || track.overpasses.some((o) => Math.abs(track.delta(d, o.dist)) < 25)) { prev[side] = null; continue; }
-      const p = track.sample(d, side * (SIDEWALK_OUT - 0.35));
+      const p = track.sample(d, side * (SW() - 0.35));
       const m = new THREE.Matrix4().makeRotationY(p.yaw).setPosition(p.x, p.y, p.z);
       poles.push(new THREE.CylinderGeometry(0.15, 0.2, 11, 7).translate(0, 5.5, 0).applyMatrix4(m));
       poles.push(new THREE.BoxGeometry(2.0, 0.12, 0.12).translate(0, 9.6, 0).applyMatrix4(m), new THREE.BoxGeometry(1.4, 0.1, 0.1).translate(0, 10.3, 0).applyMatrix4(m));
@@ -322,7 +322,7 @@ export function buildShared(scene, track, world, r, opts = {}) {
       }
       prev[side] = anchors;
       if (side === 1 && r() < 0.12) { // wire crossing the street
-        const q = track.sample(d, -(SIDEWALK_OUT - 0.35));
+        const q = track.sample(d, -(SW() - 0.35));
         for (let k = 0; k < 10; k++) {
           const t0 = k / 10, t1 = (k + 1) / 10, sag = (t) => 4 * t * (1 - t) * 1.2;
           const y0 = p.y + (q.y - p.y) * t0, y1 = p.y + (q.y - p.y) * t1;

@@ -3,7 +3,7 @@ import { HW } from './track.js';
 import { BUILD, canvasTex, labelSign, dome, std, basic } from './landmarks.js';
 
 // Real landmarks along the route (OpenStreetMap + Wikidata) with roadside photo boards (Wikimedia Commons).
-const SIDEWALK_OUT = HW + 0.5 + 5;
+const SW = () => HW + 0.5 + 5; // sidewalk outer edge
 const R = { church: 30, mosque: 30, heritage: 40, station: 50, stadium: 70, park: 35, campus: 45, hospital: 30, tower: 22, gopuram: 45, fort: 70, lighthouse: 25, mall: 80, techpark: 90, viewpoint: 20 };
 const MAX_OFF = 160;
 
@@ -16,7 +16,7 @@ export function planPois(track, T, plans) {
     let dx = poi.x - n.x, dz = poi.z - n.z;
     const off = Math.hypot(dx, dz) || 1;
     const r = R[poi.type] || 30;
-    const want = Math.min(off, MAX_OFF, Math.max(SIDEWALK_OUT + r + 6, off));
+    const want = Math.min(off, MAX_OFF, Math.max(SW() + r + 6, off));
     dx /= off; dz /= off;
     const x = n.x + dx * want, z = n.z + dz * want;
     const side = Math.sign(n.lateral) || 1;
@@ -150,7 +150,7 @@ const POI_BUILD = {
 
 // Billboard with the real photo, name and attribution.
 function photoBoard(p, track, groundY) {
-  const s = track.sample(p.d, p.side * (SIDEWALK_OUT + 3.5));
+  const s = track.sample(p.d, p.side * (SW() + 3.5));
   const W = 1024, H = 640;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');

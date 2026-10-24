@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Track, buildWorld, gridSlot } from './track.js';
+import { Track, buildWorld, gridSlot, setRoadWidth } from './track.js';
 import { CarPhysics, collide, clamp, wrapAngle } from './physics.js';
 import { loadCarModels, CarVisual, CARS, CAR_IDS } from './cars.js';
 import { Traffic, loadTrafficModels } from './traffic.js';
@@ -331,6 +331,7 @@ async function loadMap(id) {
   const T = { ...base, banner: data ? data.start : base.banner, endLabel: data ? data.end : 'FINISH', terrain: data?.terrain, pois: data?.pois };
   $('loadtext').textContent = 'Building ' + (data ? data.name : 'Neon Harbor') + '…';
   disposeCity();
+  setRoadWidth(data?.roadHalfWidth || 9);
   track = new Track(data ? { ...data, overpasses: T.overpasses } : null);
   const plans = planLandmarks(track, T);
   const poiPlans = planPois(track, T, plans);
