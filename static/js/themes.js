@@ -53,25 +53,25 @@ export const THEMES = {
     landmarks: [{ type: 'bridgeArches', at: 0.035 }, { type: 'lighthouse', at: 0.42, side: 'water' }, { type: 'gateway', at: 'end', label: "ELLIOT'S BEACH" }],
   },
   mysuru: {
-    ...INDIA_BASE, lang: 'kn', banner: 'MYSURU DASARA RUN', nearH: [6, 16], tall: 0, buildRanges: [[0, 0.5]], trees: 'rain', treeDensity: 1.4,
+    ...INDIA_BASE, lang: 'kn', banner: 'MYSURU DASARA RUN', terrainColors: ['#33391f', '#56482f'], nearH: [6, 16], tall: 0, buildRanges: [[0, 0.5]], trees: 'rain', treeDensity: 1.4,
     landmarks: [{ type: 'palace', at: 'start', side: 1 }, { type: 'gopuram', at: 'end', label: 'CHAMUNDI HILLS' }],
     traffic: { auto: 5, scooter: 5, bus: 2, sedan: 4, suv: 2, hatch: 3, van: 1, truck: 1, delivery: 0 },
   },
   wayanad: {
     ...INDIA_BASE, lang: 'ml', banner: 'THAMARASSERY GHAT', sky: 'hill', buildRanges: [[0, 0.04], [0.97, 1]], nearH: [5, 9], tall: 0,
-    trees: 'forest', treeDensity: 2.2, tea: true, kiosks: false, hoardings: false, lampSpacing: 140, reflectors: true,
+    trees: 'forest', treeDensity: 2.2, tea: true, terrainColors: ['#22351c', '#4d4332'], kiosks: false, hoardings: false, lampSpacing: 140, reflectors: true,
     busColors: [0xb3121b, 0xe0e0e0], autoColors: [[0.1, 0.1, 0.1], [0.95, 0.78, 0.05], [0.95, 0.78, 0.05]],
     landmarks: [{ type: 'gateway', at: 'start', label: 'THAMARASSERY GHAT' }, { type: 'viewpoint', at: 'end', label: 'LAKKIDI VIEW POINT' }],
     traffic: { auto: 1, scooter: 2, bus: 3, sedan: 3, suv: 4, hatch: 2, van: 1, truck: 3, delivery: 1 }, hairpins: true,
   },
   kannur: {
-    ...INDIA_BASE, lang: 'ml', banner: 'KANNUR', sky: 'coastal', trees: 'palm', treeDensity: 1.6, nearH: [5, 14], tall: 0, density: 0.7,
+    ...INDIA_BASE, lang: 'ml', banner: 'KANNUR', sky: 'coastal', terrainColors: ['#2a3a20', '#4a3e2c'], trees: 'palm', treeDensity: 1.6, nearH: [5, 14], tall: 0, density: 0.7,
     water: { ranges: [[0, 0.07], [0.5, 0.6], [0.92, 1]], dir: 'west', kind: 'sea', beach: 60 },
     busColors: [0xb3121b, 0x1f6fd0, 0xf2a800], autoColors: [[0.08, 0.08, 0.08], [0.95, 0.78, 0.05], [0.95, 0.78, 0.05]],
     landmarks: [{ type: 'fort', at: 0.05, side: 'water', label: 'ST. ANGELO FORT' }, { type: 'fort', at: 'end', side: 'land', label: 'THALASSERY FORT' }],
   },
   kochi: {
-    ...INDIA_BASE, lang: 'ml', banner: 'MARINE DRIVE', sky: 'coastal', trees: 'palm', nearH: [10, 30], tall: 0.1,
+    ...INDIA_BASE, lang: 'ml', banner: 'MARINE DRIVE', sky: 'coastal', terrainColors: ['#2a3a20', '#4a3e2c'], trees: 'palm', nearH: [10, 30], tall: 0.1,
     water: { ranges: [[0, 0.12]], dir: 'west', kind: 'backwater', beach: 15 },
     metro: { from: 0.12, to: 0.98, side: -1, color: '#00a6a6', name: 'കൊച്ചി മെട്രോ  KOCHI METRO',
       stations: [["MAHARAJA'S COLLEGE", 0.15], ['MG ROAD', 0.27], ['TOWN HALL', 0.38], ['KALOOR', 0.49], ['JLN STADIUM', 0.6], ['PALARIVATTOM', 0.72], ['CHANGAMPUZHA PARK', 0.84], ['EDAPALLY', 0.95]] },
@@ -79,7 +79,7 @@ export const THEMES = {
     landmarks: [{ type: 'gateway', at: 'start', label: 'MARINE DRIVE' }, { type: 'mall', at: 'end', label: 'EDAPPALLY' }],
   },
   trivandrum: {
-    ...INDIA_BASE, lang: 'ml', banner: 'EAST FORT', sky: 'coastal', trees: 'palm', treeDensity: 1.4, nearH: [6, 18],
+    ...INDIA_BASE, lang: 'ml', banner: 'EAST FORT', sky: 'coastal', terrainColors: ['#2a3a20', '#4a3e2c'], trees: 'palm', treeDensity: 1.4, nearH: [6, 18],
     water: { ranges: [[0.84, 1]], dir: 'west', kind: 'sea', beach: 70 },
     busColors: [0xb3121b, 0xf2a800], autoColors: [[0.08, 0.08, 0.08], [0.95, 0.78, 0.05], [0.95, 0.78, 0.05]],
     landmarks: [{ type: 'gopuram', at: 'start', side: -1, label: 'SREE PADMANABHASWAMY' }, { type: 'lighthouse', at: 'end', side: 'water', stripes: true }],

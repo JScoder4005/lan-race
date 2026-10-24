@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { waterSideAt, inRanges } from './themes.js';
+import { buildTerrain } from './terrain.js';
 
 export const HW = 9;          // road half width (4 lanes)
 const SIDEWALK = 5;
@@ -37,14 +38,15 @@ export class Track {
       const curve = new THREE.CatmullRomCurve3(CONTROL.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal');
       const v = curve.getSpacedPoints(Math.round(curve.getLength() / 2));
       v.pop();
-      pts = v.map((p) => [p.x, p.z]);
+      pts = v.map((p) => [p.x, p.z, 0]);
     }
     const n = this.n = pts.length;
-    this.px = new Float32Array(n); this.pz = new Float32Array(n);
+    this.px = new Float32Array(n); this.pz = new Float32Array(n); this.py = new Float32Array(n);
     this.tx = new Float32Array(n); this.tz = new Float32Array(n);
     this.cum = new Float32Array(n + 1);
     this.curv = new Float32Array(n);
-    for (let i = 0; i < n; i++) { this.px[i] = pts[i][0]; this.pz[i] = pts[i][1]; }
+    for (let i = 0; i < n; i++) { this.px[i] = pts[i][0]; this.pz[i] = pts[i][1]; this.py[i] = pts[i][2] || 0; }
+    this.minY = Math.min(...this.py); this.maxY = Math.max(...this.py);
     const wrap = (i) => (this.closed ? (i + n) % n : Math.max(0, Math.min(n - 1, i)));
     for (let i = 0; i < n; i++) {
       const j = wrap(i + 1), a = wrap(i - 1);
@@ -101,9 +103,13 @@ export class Track {
     let tx = this.tx[i] + (this.tx[j] - this.tx[i]) * t, tz = this.tz[i] + (this.tz[j] - this.tz[i]) * t;
     const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
     out.x = cx + tz * lateral; out.z = cz - tx * lateral;
+    out.y = this.py[i] + (this.py[j] - this.py[i]) * t;
+    out.grade = (this.py[j] - this.py[i]) / seg;
     out.tx = tx; out.tz = tz; out.yaw = Math.atan2(tx, tz); out.dist = d;
     return out;
   }
+
+  heightAt(dist) { const [i, d] = this.idxAt(dist); const j = this.closed ? (i + 1) % this.n : i + 1; const t = (d - this.cum[i]) / ((this.cum[i + 1] - this.cum[i]) || 1); return this.py[i] + (this.py[j] - this.py[i]) * t; }
 
   globalNearestIndex(x, z) {
     const cx = Math.floor(x / this.cell), cz = Math.floor(z / this.cell);
@@ -159,6 +165,8 @@ export class Track {
     out.dist = this.cum[a] + (this.cum[a + 1] - this.cum[a]) * t;
     out.lateral = (x - cx) * tz - (z - cz) * tx;
     out.tx = tx; out.tz = tz; out.x = cx; out.z = cz;
+    out.y = this.py[a] + (this.py[b] - this.py[a]) * t;
+    out.grade = (this.py[b] - this.py[a]) / (Math.hypot(sx, sz) || 1);
     return out;
   }
 
@@ -176,17 +184,17 @@ export class Track {
 }
 
 function resamplePolyline(src, step) {
-  const out = [src[0]];
+  const out = [[src[0][0], src[0][1], src[0][2] || 0]];
   let carry = 0;
   for (let i = 1; i < src.length; i++) {
     const a = src[i - 1], b = src[i];
     const seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
     let t = step - carry;
-    while (t <= seg) { out.push([a[0] + ((b[0] - a[0]) * t) / seg, a[1] + ((b[1] - a[1]) * t) / seg]); t += step; }
+    while (t <= seg) { const k = t / seg; out.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, (a[2] || 0) + ((b[2] || 0) - (a[2] || 0)) * k]); t += step; }
     carry = seg - (t - step);
   }
   const last = src[src.length - 1];
-  if (Math.hypot(out[out.length - 1][0] - last[0], out[out.length - 1][1] - last[1]) > step * 0.3) out.push(last);
+  if (Math.hypot(out[out.length - 1][0] - last[0], out[out.length - 1][1] - last[1]) > step * 0.3) out.push([last[0], last[1], last[2] || 0]);
   return out;
 }
 
@@ -281,7 +289,7 @@ function ribbon(track, profile, side, vLen, i0 = 0, i1 = track.closed ? track.n 
     const v = (ii >= track.n ? track.length + track.cum[i] : track.cum[i]) / vLen;
     for (let k = 0; k < m; k++) {
       const off = profile[k][0] * side;
-      pos.push(cx + lx * off, profile[k][1], cz + lz * off);
+      pos.push(cx + lx * off, profile[k][1] + track.py[i], cz + lz * off);
       uv.push(uAcc[k] / uTot, v);
     }
     rows++;
@@ -429,12 +437,13 @@ function boxFaces(b, pos, uv, col, r) {
   const hw = b.w / 2, hd = b.d / 2;
   const corner = (lx, lz) => [b.x + lx * c + lz * s, b.z - lx * s + lz * c];
   const P = [corner(-hw, -hd), corner(hw, -hd), corner(hw, hd), corner(-hw, hd)];
+  const y0 = (b.y0 || 0) - (b.y0 ? 5 : 0), y1 = (b.y0 || 0) + b.h;
   const faceLen = [b.w, b.d, b.w, b.d];
   const shade = [0.8, 1.0, 0.7, 0.9];
   for (let f = 0; f < 4; f++) {
     const [ax, az] = P[f], [bx, bz] = P[(f + 1) % 4];
-    const u1 = b.u0 + faceLen[f] / 32, v1 = b.v0 + b.h / 48;
-    const quad = [[ax, 0, az, b.u0, b.v0, 1], [bx, 0, bz, u1, b.v0, 1], [bx, b.h, bz, u1, v1, 0], [ax, b.h, az, b.u0, v1, 0]];
+    const u1 = b.u0 + faceLen[f] / 32, v1 = b.v0 + (y1 - y0) / 48;
+    const quad = [[ax, y0, az, b.u0, b.v0, 1], [bx, y0, bz, u1, b.v0, 1], [bx, y1, bz, u1, v1, 0], [ax, y1, az, b.u0, v1, 0]];
     for (const tri of [0, 2, 1, 0, 3, 2]) {
       const q = quad[tri];
       pos.push(q[0], q[1], q[2]); uv.push(q[3], q[4]);
@@ -445,7 +454,7 @@ function boxFaces(b, pos, uv, col, r) {
   }
   const roof = [P[0], P[1], P[2], P[3]];
   for (const tri of [0, 2, 1, 0, 3, 2]) {
-    pos.push(roof[tri][0], b.h, roof[tri][1]); uv.push(0.5, 0.995); col.push(0.5, 0.5, 0.55);
+    pos.push(roof[tri][0], y1, roof[tri][1]); uv.push(0.5, 0.995); col.push(0.5, 0.5, 0.55);
   }
 }
 
@@ -465,6 +474,8 @@ export function buildWorld(scene, track, renderer, T) {
   };
   world.waterSide = waterSide;
   world.frac = frac;
+  const groundY = T.terrain ? buildTerrain(scene, track, T.terrain, T) : track.closed ? () => 0 : (x, z) => track.nearest(x, z).y;
+  world.groundY = groundY;
 
   // Ground
   const groundTex = simpleTex(256, 256, (x, w, h) => {
@@ -473,7 +484,7 @@ export function buildWorld(scene, track, renderer, T) {
   }, { aniso });
   groundTex.repeat.set(4000, 4000);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000), new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.95, color: 0x8a8a8a }));
-  ground.rotation.x = -Math.PI / 2; ground.position.set((track.px[0] + track.px[track.n - 1]) / 2, -0.02, (track.pz[0] + track.pz[track.n - 1]) / 2);
+  ground.rotation.x = -Math.PI / 2; ground.position.set((track.px[0] + track.px[track.n - 1]) / 2, T.terrain ? track.minY - 12 : -0.02, (track.pz[0] + track.pz[track.n - 1]) / 2);
   scene.add(ground);
 
   // Road
@@ -500,7 +511,7 @@ export function buildWorld(scene, track, renderer, T) {
   const lineAt = (d) => {
     const s0 = track.sample(d);
     const line = new THREE.Mesh(new THREE.PlaneGeometry(HW * 2, 1.6), new THREE.MeshStandardMaterial({ map: checker, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }));
-    line.rotation.x = -Math.PI / 2; line.rotation.z = s0.yaw; line.position.set(s0.x, 0.03, s0.z);
+    line.rotation.x = -Math.PI / 2; line.rotation.z = s0.yaw; line.position.set(s0.x, s0.y + 0.03, s0.z);
     scene.add(line);
   };
   lineAt(track.startDist);
@@ -511,7 +522,7 @@ export function buildWorld(scene, track, renderer, T) {
   for (let k = 0; k < 8; k++) {
     const g = gridSlot(track, k);
     const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 5.2), new THREE.MeshBasicMaterial({ map: slotTex, transparent: true, opacity: 0.85, depthWrite: false, color: 0x999999 }));
-    m.rotation.x = -Math.PI / 2; m.rotation.z = g.yaw; m.position.set(g.x, 0.031, g.z);
+    m.rotation.x = -Math.PI / 2; m.rotation.z = g.yaw; m.position.set(g.x, g.y + 0.031, g.z);
     scene.add(m);
   }
 
@@ -560,7 +571,7 @@ export function buildWorld(scene, track, renderer, T) {
     for (const [d, yawAdd] of [[1.5, 0], [L - 1.5, Math.PI]]) {
       const p = track.sample(d);
       const b = new THREE.Mesh(new THREE.BoxGeometry(HW * 2 + 1, 1.1, 0.8), wallMat);
-      b.position.set(p.x, 0.55, p.z); b.rotation.y = p.yaw + yawAdd; scene.add(b);
+      b.position.set(p.x, p.y + 0.55, p.z); b.rotation.y = p.yaw + yawAdd; scene.add(b);
     }
   }
 
@@ -597,7 +608,7 @@ export function buildWorld(scene, track, renderer, T) {
     const base = track.sample(d, side * (HW + WALL + 1.2));
     const ix = -side * base.tz, iz = side * base.tx;
     const th = Math.atan2(-iz, ix);
-    const m = new THREE.Matrix4().makeRotationY(th).setPosition(base.x, 0, base.z);
+    const m = new THREE.Matrix4().makeRotationY(th).setPosition(base.x, base.y, base.z);
     const pole = new THREE.CylinderGeometry(0.11, 0.17, 9.2, 8).translate(0, 4.6, 0);
     const arm = new THREE.BoxGeometry(2.9, 0.13, 0.13).translate(1.35, 9.0, 0);
     const head = new THREE.BoxGeometry(1.1, 0.22, 0.55).translate(2.75, 8.92, 0);
@@ -611,10 +622,10 @@ export function buildWorld(scene, track, renderer, T) {
     bulb.deleteAttribute('uv'); bulb.deleteAttribute('normal');
     bulbGeos.push(bulb);
     const lp = track.sample(d, side * (HW + WALL + 1.2 - 2.75));
-    world.lamps.push({ x: lp.x, z: lp.z, y: 8.6, color });
-    pools.push([lp.x, lp.z, 20, color]);
+    world.lamps.push({ x: lp.x, z: lp.z, y: lp.y + 8.6, color });
+    pools.push([lp.x, lp.z, 20, color, lp.y]);
   }
-  for (const l of world.lamps) if (l.tunnel) pools.push([l.x, l.z, 14, 0x9fb8ff]);
+  for (const l of world.lamps) if (l.tunnel) pools.push([l.x, l.z, 14, 0x9fb8ff, 0]);
   if (poleGeos.length) {
     scene.add(new THREE.Mesh(mergeGeometries(poleGeos), new THREE.MeshStandardMaterial({ color: 0x2c3036, metalness: 0.7, roughness: 0.45 })));
     scene.add(new THREE.Mesh(mergeGeometries(bulbGeos), new THREE.MeshBasicMaterial({ vertexColors: true })));
@@ -628,11 +639,11 @@ export function buildWorld(scene, track, renderer, T) {
   if (pools.length) {
     const pos = [], uv = [], col = [];
     const c = new THREE.Color();
-    for (const [px, pz, s, color] of pools) {
+    for (const [px, pz, s, color, py] of pools) {
       c.set(color);
       const h = s / 2;
       const v = [[px - h, pz - h, 0, 0], [px + h, pz - h, 1, 0], [px + h, pz + h, 1, 1], [px - h, pz + h, 0, 1]];
-      for (const t of [0, 2, 1, 0, 3, 2]) { pos.push(v[t][0], 0.045, v[t][1]); uv.push(v[t][2], v[t][3]); col.push(c.r, c.g, c.b); }
+      for (const t of [0, 2, 1, 0, 3, 2]) { pos.push(v[t][0], py + 0.045, v[t][1]); uv.push(v[t][2], v[t][3]); col.push(c.r, c.g, c.b); }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -670,6 +681,7 @@ export function buildWorld(scene, track, renderer, T) {
       const ws = waterSide(n.dist);
       if (ws && Math.sign(n.lateral) === ws) return false;
     }
+    b.y0 = groundY(b.x, b.z);
     b.u0 = r(); b.v0 = r(); b.tint = 0.75 + r() * 0.5;
     if (T.tints) b.tc = T.tints[Math.floor(r() * T.tints.length)];
     const set = b.glass ? sets.glass : sets.main;
@@ -747,7 +759,7 @@ export function buildWorld(scene, track, renderer, T) {
       const nx = -b.front * Math.cos(b.yaw), nz = b.front * Math.sin(b.yaw);
       const tx = Math.sin(b.yaw), tz = Math.cos(b.yaw);
       const sw = Math.min(b.w * 0.8, 12), sh = sw / 4;
-      const y = 5 + r() * Math.min(18, b.h - 8);
+      const y = b.y0 + 5 + r() * Math.min(18, b.h - 8);
       const cx = b.x + nx * (b.d / 2 + 0.25), cz = b.z + nz * (b.d / 2 + 0.25);
       const dirSign = b.front;
       const ax = cx - tx * sw / 2 * dirSign, az = cz - tz * sw / 2 * dirSign;
@@ -765,7 +777,7 @@ export function buildWorld(scene, track, renderer, T) {
 
   // Aviation lights on tall roofs
   const avGeos = [];
-  for (const b of boxes) if (b.h > 75) avGeos.push(new THREE.SphereGeometry(0.7, 6, 4).translate(b.x, b.h + 0.6, b.z));
+  for (const b of boxes) if (b.h > 75) avGeos.push(new THREE.SphereGeometry(0.7, 6, 4).translate(b.x, b.y0 + b.h + 0.6, b.z));
   const avMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(8, 0.2, 0.1) });
   if (avGeos.length) scene.add(new THREE.Mesh(mergeGeometries(avGeos), avMat));
 
@@ -773,7 +785,7 @@ export function buildWorld(scene, track, renderer, T) {
   const gantry = (d, text, lights) => {
     const p = track.sample(d);
     const g = new THREE.Group();
-    g.position.set(p.x, 0, p.z); g.rotation.y = p.yaw;
+    g.position.set(p.x, p.y, p.z); g.rotation.y = p.yaw;
     const steel = new THREE.MeshStandardMaterial({ color: 0x1b1e24, metalness: 0.8, roughness: 0.35 });
     for (const sx of [-1, 1]) { const pil = new THREE.Mesh(new THREE.BoxGeometry(0.9, 9, 0.9), steel); pil.position.set(sx * (HW + 1.1), 4.5, 0); g.add(pil); }
     const beam = new THREE.Mesh(new THREE.BoxGeometry(HW * 2 + 3.2, 1.9, 0.9), steel); beam.position.y = 8.4; g.add(beam);

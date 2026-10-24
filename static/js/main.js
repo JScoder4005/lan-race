@@ -14,6 +14,7 @@ import { Pursuit } from './pursuit.js';
 import { addSky, applySky, buildEnvironment, createComposer, FOG_COLOR } from './scene.js';
 import { THEMES } from './themes.js';
 import { planLandmarks } from './landmarks.js';
+import { planPois, buildPois } from './pois.js';
 import { buildIndia } from './india.js';
 
 const $ = (id) => document.getElementById(id);
@@ -179,6 +180,7 @@ function renderLobby() {
   sel.value = G.mapId || L.map || 'bengaluru';
   sel.disabled = !host;
   const info = G.mapInfo;
+  drawMapPreviews(G.mapId || L.map, host);
   $('mapInfo').textContent = info ? (info.closed ? 'Closed street circuit · lap races' : `${info.start} → ${info.end} · ${(info.length / 1000).toFixed(1)} km of real road`) : '';
   const open = info && !info.closed;
   $('modeSeg').children[0].textContent = open ? 'SPRINT' : 'CIRCUIT RACE';
@@ -197,6 +199,79 @@ function renderLobby() {
   $('resWait').style.display = host ? 'none' : '';
 }
 
+// Route maps: thumbnails of every map plus a larger preview (route, landmarks, elevation) of the selected one.
+const POI_COL = { gopuram: '#ffb400', church: '#9fd8ff', mosque: '#7dffb0', station: '#f7c900', heritage: '#ff9a6b', fort: '#ff9a6b', park: '#6bdc6b', stadium: '#c9c9ff' };
+function routeOf(m) {
+  if (m.route) return m.route;
+  if (!m.closed) return null;
+  const t = m.id === G.mapId ? track : (routeOf.tokyo ||= new Track(null));
+  const out = [];
+  for (let i = 0; i < t.n; i += Math.max(1, Math.floor(t.n / 160))) out.push([t.px[i], t.pz[i], t.py[i]]);
+  out.push(out[0]);
+  return out;
+}
+function drawRoute(cv, m, big) {
+  const x = cv.getContext('2d'), W = cv.width, H = cv.height, r = routeOf(m);
+  x.clearRect(0, 0, W, H);
+  if (!r) return;
+  const prof = big && !m.closed ? 64 : 0, pad = big ? 18 : 6;
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const [a, b] of r) { x0 = Math.min(x0, a); x1 = Math.max(x1, a); z0 = Math.min(z0, b); z1 = Math.max(z1, b); }
+  const k = Math.min((W - pad * 2) / (x1 - x0 || 1), (H - prof - pad * 2) / (z1 - z0 || 1));
+  const ox = (W - (x1 - x0) * k) / 2, oz = (H - prof - (z1 - z0) * k) / 2;
+  const P = (a, b) => [ox + (a - x0) * k, oz + (b - z0) * k];
+  const yMin = Math.min(...r.map((q) => q[2])), yMax = Math.max(...r.map((q) => q[2]));
+  x.lineCap = x.lineJoin = 'round';
+  x.strokeStyle = 'rgba(57,230,255,0.25)'; x.lineWidth = big ? 9 : 5;
+  x.beginPath(); r.forEach((q, i) => x[i ? 'lineTo' : 'moveTo'](...P(q[0], q[1]))); x.stroke();
+  x.lineWidth = big ? 3 : 2;
+  for (let i = 1; i < r.length; i++) {
+    const h = (r[i][2] - yMin) / (yMax - yMin || 1);
+    x.strokeStyle = `hsl(${190 - h * 160},100%,${60 + h * 10}%)`;
+    x.beginPath(); x.moveTo(...P(r[i - 1][0], r[i - 1][1])); x.lineTo(...P(r[i][0], r[i][1])); x.stroke();
+  }
+  const dot = (q, c, rad) => { x.fillStyle = c; x.beginPath(); x.arc(...P(q[0], q[1]), rad, 0, 7); x.fill(); };
+  dot(r[0], '#7cff6b', big ? 6 : 3);
+  if (!m.closed) dot(r[r.length - 1], '#ff2e88', big ? 6 : 3);
+  if (!big) return;
+  x.font = '700 13px Arial'; x.textBaseline = 'middle';
+  for (const p of m.pois || []) {
+    const [px, pz] = P(p.x, p.z);
+    x.fillStyle = POI_COL[p.type] || '#ffffff'; x.beginPath(); x.arc(px, pz, 4, 0, 7); x.fill();
+    x.fillStyle = 'rgba(230,236,255,0.85)'; x.textAlign = px > W * 0.6 ? 'right' : 'left';
+    x.fillText(p.name.length > 26 ? p.name.slice(0, 25) + '…' : p.name, px + (px > W * 0.6 ? -8 : 8), pz);
+  }
+  x.textAlign = 'left'; x.font = '800 13px Arial';
+  x.fillStyle = '#7cff6b'; x.fillText('● ' + m.start, 10, 14);
+  if (!m.closed) { x.fillStyle = '#ff2e88'; x.textAlign = 'right'; x.fillText(m.end + ' ●', W - 10, 14); }
+  if (!prof) return;
+  const top = H - prof + 8, ph = prof - 22;
+  x.fillStyle = 'rgba(57,230,255,0.12)'; x.strokeStyle = '#39e6ff'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(0, H - 14);
+  r.forEach((q, i) => x.lineTo(i / (r.length - 1) * W, top + ph - (q[2] - yMin) / (yMax - yMin || 1) * ph));
+  x.lineTo(W, H - 14); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = '#aab3c4'; x.font = '700 12px Arial'; x.textAlign = 'left';
+  x.fillText(`ELEVATION · ${Math.round(yMax - yMin)} m climb · ${(m.length / 1000).toFixed(1)} km`, 8, H - 5);
+}
+let thumbsFor = '';
+function drawMapPreviews(id, host) {
+  const box = $('mapThumbs');
+  if (box.childElementCount !== mapIndex.length) {
+    box.innerHTML = '';
+    for (const m of mapIndex) {
+      const c = document.createElement('canvas'); c.width = 120; c.height = 90; c.title = `${m.name} — ${m.sub}`; c.dataset.id = m.id;
+      c.onclick = () => isHost() && net.send({ t: 'cfg', map: m.id });
+      box.appendChild(c); drawRoute(c, m, false);
+    }
+  }
+  box.classList.toggle('locked', !host);
+  for (const c of box.children) c.classList.toggle('on', c.dataset.id === id);
+  if (thumbsFor === id + G.mapId) return;
+  thumbsFor = id + G.mapId;
+  const m = mapIndex.find((q) => q.id === id);
+  if (m) drawRoute($('mapPreview'), m, true);
+}
+
 // ---------- networking ----------
 let net = null;
 const netHandlers = {
@@ -211,6 +286,7 @@ const netHandlers = {
   start: (m) => { queueMap(m.map || G.mapId).then(() => startEvent(m)); },
   fin: (m) => { if (m.id !== net.id) { const p = G.lobby.players.find((x) => x.id === m.id); if (p) hud.popup(`${esc(p.name)} FINISHED`, '#ffb400'); } },
   result: (m) => showResults(m),
+  knock: (m) => traffic?.applyRemoteKnock(m.k.gi, m.k),
   close: () => hud.net('reconnecting…'),
 };
 function sendHello() { net.send({ t: 'hello', name, color, car }); }
@@ -252,18 +328,24 @@ async function loadMap(id) {
   if (!THEMES[id]) id = 'tokyo';
   const data = id === 'tokyo' ? null : (mapCache[id] ||= await (await fetch(`maps/${id}.json`)).json());
   const base = THEMES[id];
-  const T = { ...base, banner: data ? data.start : base.banner, endLabel: data ? data.end : 'FINISH' };
+  const T = { ...base, banner: data ? data.start : base.banner, endLabel: data ? data.end : 'FINISH', terrain: data?.terrain, pois: data?.pois };
   $('loadtext').textContent = 'Building ' + (data ? data.name : 'Neon Harbor') + '…';
   disposeCity();
   track = new Track(data ? { ...data, overpasses: T.overpasses } : null);
   const plans = planLandmarks(track, T);
-  T.reserved = plans;
+  const poiPlans = planPois(track, T, plans);
+  T.reserved = plans.concat(poiPlans);
   city = new THREE.Group();
   scene.add(city);
   world = buildWorld(city, track, renderer, T);
   props = T.tokyo ? buildTokyo(city, track, world) : buildIndia(city, track, world, T, plans);
   props.setWet(rain.visible);
-  traffic = new Traffic(city, track, trafficModels, T);
+  buildPois(city, track, T, poiPlans, world.groundY);
+  traffic = new Traffic(city, track, trafficModels, T, id, world.groundY);
+  traffic.onKnock = (gi, k, imp) => {
+    net?.send({ t: 'knock', k: { gi, x: k.x, y: k.y, z: k.z, vx: k.vx, vy: k.vy, vz: k.vz, yaw: k.yaw, pitch: 0, roll: 0, wy: k.wy, wp: k.wp, wr: k.wr } });
+    if (imp > 6) hud.popup(imp > 14 ? 'WRECKED!' : 'TAKEDOWN', '#ffb400');
+  };
   hud.setTrack(track);
   pursuit.track = track;
   pursuit.reset();
@@ -329,13 +411,15 @@ function updateCamera(dt, t) {
     const yaw = cam.yaw + (lb ? Math.PI : 0);
     const fx = Math.sin(yaw), fz = Math.cos(yaw);
     const back = m.back + Math.min(me.speed, 100) * 0.018;
-    camera.position.set(me.x - fx * back, m.up + Math.min(me.speed, 100) * 0.003, me.z - fz * back);
-    camera.lookAt(me.x + fx * 5, m.look, me.z + fz * 5);
+    const cx = me.x - fx * back, cz = me.z - fz * back;
+    const cy = Math.max(me.y + m.up + Math.min(me.speed, 100) * 0.003, (world?.groundY?.(cx, cz) ?? -1e9) + 1.2);
+    camera.position.set(cx, cy, cz);
+    camera.lookAt(me.x + fx * 5, me.y + m.look, me.z + fz * 5);
   } else {
     const yaw = me.yaw + (lb ? Math.PI : 0), fx = Math.sin(me.yaw), fz = Math.cos(me.yaw);
     const off = m.hood ? (lb ? -1.6 : 0.1) : (lb ? -2.4 : 2.35), y = m.hood ? 1.18 : 0.55;
-    camera.position.set(me.x + fx * off, y, me.z + fz * off);
-    camera.lookAt(camera.position.x + Math.sin(yaw) * 20, y - 0.4, camera.position.z + Math.cos(yaw) * 20);
+    camera.position.set(me.x + fx * off, me.y + y, me.z + fz * off);
+    camera.lookAt(camera.position.x + Math.sin(yaw) * 20, me.y + y - 0.4 + Math.tan(me.pitch) * 20, camera.position.z + Math.cos(yaw) * 20);
   }
   const shakeT = me.nitroOn ? 0.035 + me.speed * 0.0004 : me.scraping ? 0.03 : 0;
   cam.shake = Math.max(cam.shake * Math.exp(-dt * 6), shakeT);
@@ -352,33 +436,33 @@ function menuCamera(t) {
   const s = gridSlot(track, myLobbyIndex());
   const a = t * 0.12;
   const r = 8.5 + Math.sin(t * 0.21) * 1.5;
-  camera.position.set(s.x + Math.cos(a) * r, 1.4 + Math.sin(t * 0.33) * 0.5, s.z + Math.sin(a) * r);
-  camera.lookAt(s.x, 0.6, s.z);
+  camera.position.set(s.x + Math.cos(a) * r, s.y + 1.4 + Math.sin(t * 0.33) * 0.5, s.z + Math.sin(a) * r);
+  camera.lookAt(s.x, s.y + 0.6, s.z);
   camera.fov = 50; camera.updateProjectionMatrix();
 }
 const myLobbyIndex = () => Math.max(0, G.lobby.players.findIndex((p) => p.id === net.id));
 
 // ---------- effects helpers ----------
-function emitSmoke(x, z, yaw, amount, vx = 0, vz = 0) {
+function emitSmoke(x, z, yaw, amount, vx = 0, vz = 0, y = me.y) {
   const fx = Math.sin(yaw), fz = Math.cos(yaw);
   for (const side of [-1, 1]) {
     if (Math.random() > amount) continue;
     const px = x - fx * 1.5 + fz * 0.85 * side, pz = z - fz * 1.5 - fx * 0.85 * side;
-    smoke.emit(px, 0.35, pz, vx * 0.15 + (Math.random() - 0.5) * 1.5, 0.6 + Math.random() * 0.6, vz * 0.15 + (Math.random() - 0.5) * 1.5, 2.2 + Math.random(), 1.0, 3.4, 0.2, -0.15, 1.2);
+    smoke.emit(px, y + 0.35, pz, vx * 0.15 + (Math.random() - 0.5) * 1.5, 0.6 + Math.random() * 0.6, vz * 0.15 + (Math.random() - 0.5) * 1.5, 2.2 + Math.random(), 1.0, 3.4, 0.2, -0.15, 1.2);
   }
 }
-function skid(key, x, z, yaw, on, strength) {
+function skid(key, x, z, yaw, on, strength, y = me.y) {
   const fx = Math.sin(yaw), fz = Math.cos(yaw);
   for (const side of [-1, 1]) {
     const k = key + side;
     if (!on) { skids.stop(k); continue; }
-    skids.add(k, x - fx * 1.5 + fz * 0.82 * side, z - fz * 1.5 - fx * 0.82 * side, fx, fz, strength);
+    skids.add(k, x - fx * 1.5 + fz * 0.82 * side, z - fz * 1.5 - fx * 0.82 * side, fx, fz, strength, y);
   }
 }
-function burst(x, z, n, speed) {
+function burst(x, z, n, speed, y = me.y) {
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, s = speed * (0.3 + Math.random());
-    sparks.emit(x, 0.4 + Math.random() * 0.4, z, Math.cos(a) * s, 2 + Math.random() * 4, Math.sin(a) * s, 0.4 + Math.random() * 0.4, 0.12, 0, 1, 9.8, 0.5);
+    sparks.emit(x, y + 0.4 + Math.random() * 0.4, z, Math.cos(a) * s, 2 + Math.random() * 4, Math.sin(a) * s, 0.4 + Math.random() * 0.4, 0.12, 0, 1, 9.8, 0.5);
   }
 }
 
@@ -390,11 +474,9 @@ function physicsStep(dt, inp, st) {
   me.step(dt, inp);
   if (frozen || G.finished) return;
   if (traffic.enabled) {
-    for (const tc of traffic.cars) {
-      const imp = collide(me, tc, 1, 0, 0.2);
-      if (imp > 2.5) onHit(imp, (me.x + tc.x) / 2, (me.z + tc.z) / 2), tc.hitAt = st;
-      nearMiss(tc, st);
-    }
+    const hit = traffic.collideBody(me, CARS[car].mass || 1500, 0.2);
+    if (hit.impact > 2.5) { onHit(hit.impact, (me.x + hit.car.x) / 2, (me.z + hit.car.z) / 2); hit.car.hitAt = st; }
+    for (const tc of traffic.cars) if (!tc.knocked) nearMiss(tc, st);
   }
   // other players
   for (const [, r] of remotes) {
@@ -482,7 +564,7 @@ function updateRace(dt, inp, st, t) {
     const s = Math.sign(me.lateral);
     for (let i = 0; i < 3; i++) {
       const o = (Math.random() - 0.5) * 3.6, fx = Math.sin(me.yaw), fz = Math.cos(me.yaw);
-      sparks.emit(me.x + me.tz * s * 1.0 + fx * o, 0.35, me.z - me.tx * s * 1.0 + fz * o,
+      sparks.emit(me.x + me.tz * s * 1.0 + fx * o, me.y + 0.35, me.z - me.tx * s * 1.0 + fz * o,
         -me.vx * 0.3 + (Math.random() - 0.5) * 4, 1 + Math.random() * 3, -me.vz * 0.3 + (Math.random() - 0.5) * 4, 0.35, 0.1, 0, 1, 9.8, 0.3);
     }
   }
@@ -509,7 +591,7 @@ function updateRace(dt, inp, st, t) {
   if (G.sendT <= 0) {
     G.sendT = 0.05;
     const r2 = (v) => Math.round(v * 100) / 100;
-    const s = { x: r2(me.x), z: r2(me.z), y: r2(me.yaw), vx: r2(me.vx), vz: r2(me.vz), st: r2(me.steer), n: me.nitroOn ? 1 : 0,
+    const s = { x: r2(me.x), z: r2(me.z), y: r2(me.yaw), h: r2(me.y), pp: r2(me.pitch), vx: r2(me.vx), vz: r2(me.vz), st: r2(me.steer), n: me.nitroOn ? 1 : 0,
       br: me.brake > 0.3 ? 1 : 0, d: me.drifting || (me.handbrake && me.speed > 6) ? 1 : 0, p: Math.round(G.prog), f: G.finishMs };
     if (G.mode === 'pursuit') { s.b = pursuit.banked + Math.floor(pursuit.bounty); s.h = pursuit.heat; s.c = pursuit.snapshot(); }
     net.send({ t: 's', s });
@@ -567,14 +649,14 @@ function updateRemotes(dt, st, t) {
     if (G.phase !== 'menu' && s) {
       r.st = { ...s };
       const fwd = s.vx * Math.sin(s.y) + s.vz * Math.cos(s.y);
-      r.vis.update(dt, { x: s.x, z: s.z, yaw: s.y, fwd, steer: s.st, braking: s.br, nitro: s.n }, t);
-      if (r.live && s.d) emitSmoke(s.x, s.z, s.y, 0.8, s.vx, s.vz);
-      skid('r' + id, s.x, s.z, s.y, r.live && !!s.d, 0.5);
+      r.vis.update(dt, { x: s.x, z: s.z, y: s.h || 0, pitch: s.pp || 0, yaw: s.y, fwd, steer: s.st, braking: s.br, nitro: s.n }, t);
+      if (r.live && s.d) emitSmoke(s.x, s.z, s.y, 0.8, s.vx, s.vz, s.h || 0);
+      skid('r' + id, s.x, s.z, s.y, r.live && !!s.d, 0.5, s.h || 0);
       syncRemoteCops(r, s.c || [], dt, t);
     } else {
       const idx = G.phase === 'menu' ? G.lobby.players.findIndex((p) => p.id === id) : (G.grid[id] ?? 0);
       const g = gridSlot(track, Math.max(0, idx));
-      r.vis.update(dt, { x: g.x, z: g.z, yaw: g.yaw, fwd: 0, steer: 0 }, t);
+      r.vis.update(dt, { x: g.x, z: g.z, y: g.y, yaw: g.yaw, fwd: 0, steer: 0 }, t);
       syncRemoteCops(r, [], dt, t);
     }
   }
@@ -582,7 +664,7 @@ function updateRemotes(dt, st, t) {
 function syncRemoteCops(r, arr, dt, t) {
   while (r.cops.length < arr.length) { const v = new CarVisual('ferrari', 0x08090c, { police: true, beam: false }); scene.add(v.root); r.cops.push(v); }
   while (r.cops.length > arr.length) r.cops.pop().dispose();
-  arr.forEach((c, i) => { r.cops[i].lightsOn = !c[3]; r.cops[i].update(dt, { x: c[0], z: c[1], yaw: c[2], fwd: 30 }, t); });
+  arr.forEach((c, i) => { r.cops[i].lightsOn = !c[3]; r.cops[i].update(dt, { x: c[0], z: c[1], y: c[4] || 0, yaw: c[2], fwd: 30 }, t); });
 }
 
 // ---------- lights ----------
@@ -604,8 +686,8 @@ function updateLights(t) {
     L.intensity = l.tunnel ? 30 : 55;
   });
   const cops = [];
-  for (const c of pursuit.cops) if (!c.dead) cops.push([c.ph.x, c.ph.z]);
-  for (const [, r] of remotes) for (const v of r.cops) if (v.lightsOn) cops.push([v.root.position.x, v.root.position.z]);
+  for (const c of pursuit.cops) if (!c.dead) cops.push([c.ph.x, c.ph.z, c.ph.y]);
+  for (const [, r] of remotes) for (const v of r.cops) if (v.lightsOn) cops.push([v.root.position.x, v.root.position.z, v.root.position.y]);
   cops.sort((a, b) => ((a[0] - px) ** 2 + (a[1] - pz) ** 2) - ((b[0] - px) ** 2 + (b[1] - pz) ** 2));
   const phase = Math.floor(t * 8) % 4;
   copLights.forEach((L, i) => {
@@ -613,15 +695,15 @@ function updateLights(t) {
     if (!c) { L.intensity = 0; return; }
     const red = (phase < 2) !== (i % 2 === 1);
     L.color.setHex(red ? 0xff1010 : 0x1040ff);
-    L.position.set(c[0], 2.2, c[1]);
+    L.position.set(c[0], c[2] + 2.2, c[1]);
     L.intensity = 60;
   });
   const fx = Math.sin(me.yaw), fz = Math.cos(me.yaw);
   heads.forEach((h, i) => {
     const side = i ? 1 : -1;
     h.intensity = 130;
-    h.position.set(me.x + fx * 2.1 + fz * 0.65 * side, 0.7, me.z + fz * 2.1 - fx * 0.65 * side);
-    h.target.position.set(me.x + fx * 30 + fz * 1.5 * side, 0, me.z + fz * 30 - fx * 1.5 * side);
+    h.position.set(me.x + fx * 2.1 + fz * 0.65 * side, me.y + 0.7, me.z + fz * 2.1 - fx * 0.65 * side);
+    h.target.position.set(me.x + fx * 30 + fz * 1.5 * side, me.y + Math.tan(me.pitch) * 30, me.z + fz * 30 - fx * 1.5 * side);
   });
 }
 
@@ -675,17 +757,17 @@ function frame() {
     updateCamera(dt, t);
   } else {
     const g = gridSlot(track, myLobbyIndex());
-    me.x = g.x; me.z = g.z; me.yaw = g.yaw; me.vx = me.vz = 0; me.fwd = 0; me.speed = 0;
+    me.x = g.x; me.z = g.z; me.y = g.y; me.pitch = 0; me.yaw = g.yaw; me.vx = me.vz = 0; me.fwd = 0; me.speed = 0;
     menuCamera(t);
     if (audio.ctx && musicOn && !music.on) music.start();
     renderLyrics();
   }
-  myVis.update(dt, { x: me.x, z: me.z, yaw: me.yaw, fwd: me.fwd, steer: me.steer, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
+  myVis.update(dt, { x: me.x, z: me.z, y: me.y, pitch: me.pitch, yaw: me.yaw, fwd: me.fwd, steer: me.steer, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
   myVis.tag.visible = false;
   updateRemotes(dt, st, t);
 
   const tt = G.phase === 'menu' ? st / 1000 : (st - G.startAt) / 1000;
-  traffic?.update(tt);
+  traffic?.update(tt, dt, camera.position.x, camera.position.z);
   world.update(t);
   props.update?.(t);
   const pscale = renderer.domElement.height / (2 * Math.tan((camera.fov * Math.PI) / 360));

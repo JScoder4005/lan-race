@@ -18,7 +18,7 @@ export class CarPhysics {
     this.steer = 0; this.throttle = 0; this.brake = 0; this.handbrake = false;
     this.nitro = 1; this.nitroOn = false; this.drifting = false; this.driftLatch = false;
     this.rpm = 900; this.gear = 1; this.shift = 0;
-    this.hint = -1; this.dist = 0; this.lateral = 0; this.tx = 0; this.tz = 1;
+    this.hint = -1; this.dist = 0; this.lateral = 0; this.tx = 0; this.tz = 1; this.y = 0; this.grade = 0; this.pitch = 0;
     this.wallImpact = 0; this.scraping = false; this.frozen = false;
     this.power = opts.power ?? 1; this.grip = opts.grip ?? 1;
     this._n = {};
@@ -34,7 +34,7 @@ export class CarPhysics {
 
   updateTrack() {
     const n = this.track.nearest(this.x, this.z, this.hint, this._n);
-    this.hint = n.i; this.dist = n.dist; this.lateral = n.lateral; this.tx = n.tx; this.tz = n.tz;
+    this.hint = n.i; this.dist = n.dist; this.lateral = n.lateral; this.tx = n.tx; this.tz = n.tz; this.y = n.y; this.grade = n.grade;
   }
 
   step(dt, inp) {
@@ -84,6 +84,9 @@ export class CarPhysics {
     }
     acc -= 0.00078 * fwd * Math.abs(fwd) + 0.25 * Math.sign(fwd) * Math.min(1, Math.abs(fwd));
     if (inp.handbrake) acc -= Math.sign(fwd) * Math.min(Math.abs(fwd) * 4, 5);
+    const along = fx * this.tx + fz * this.tz;
+    acc -= 9.81 * Math.max(-0.2, Math.min(0.2, this.grade)) * along; // gravity on slopes
+    this.pitch = Math.atan(this.grade * along);
     fwd += acc * dt;
 
     // Lateral grip: handbrake breaks traction, throttle holds a drift.

@@ -70,7 +70,7 @@ export class Pursuit {
         c.deadT += dt;
         p.step(dt, { throttle: 0, brake: 0.3, steer: 0, handbrake: true, nitro: false });
         c.vis.lightsOn = false;
-        if (Math.random() < 0.5) fx.smoke.emit(p.x, 1, p.z, (Math.random() - 0.5), 2.5, (Math.random() - 0.5), 2.5, 2, 3, 0.35);
+        if (Math.random() < 0.5) fx.smoke.emit(p.x, p.y + 1, p.z, (Math.random() - 0.5), 2.5, (Math.random() - 0.5), 2.5, 2, 3, 0.35);
       } else if (c.block) {
         p.vx = p.vz = 0;
         if (T.delta(me.dist, c.blockDist) > 160) c.remove = true;
@@ -87,8 +87,8 @@ export class Pursuit {
           if (c.block && imp > 14) { c.block = false; c.health = 0; }
         }
       }
-      if (traffic?.enabled) for (const tc of traffic.cars) {
-        const ti = collide(p, tc, 1, 0, 0.2);
+      if (traffic?.enabled) {
+        const ti = traffic.collideBody(p, 1700, 0.2).impact;
         if (ti > 6 && !c.dead) c.health -= ti * 3;
       }
       if (p.wallImpact > 14 && !c.dead) c.health -= p.wallImpact * 2;
@@ -100,7 +100,7 @@ export class Pursuit {
       }
       if (!c.dead) nearest = Math.min(nearest, Math.hypot(p.x - me.x, p.z - me.z));
       if (c.deadT > 6 || (c.block && c.remove)) c.gone = true;
-      c.vis.update(dt, { x: p.x, z: p.z, yaw: p.yaw, fwd: p.fwd, steer: p.steer, braking: p.brake > 0.3 }, performance.now() / 1000);
+      c.vis.update(dt, { x: p.x, z: p.z, y: p.y, pitch: p.pitch, yaw: p.yaw, fwd: p.fwd, steer: p.steer, braking: p.brake > 0.3 }, performance.now() / 1000);
     }
     // cop <-> cop
     for (let i = 0; i < this.cops.length; i++) for (let j = i + 1; j < this.cops.length; j++) {
@@ -159,6 +159,6 @@ export class Pursuit {
 
   // compact form for network: [[x,z,yaw,dead],...]
   snapshot() {
-    return this.cops.map((c) => [Math.round(c.ph.x * 10) / 10, Math.round(c.ph.z * 10) / 10, Math.round(c.ph.yaw * 100) / 100, c.dead || !c.vis.lightsOn ? 1 : 0]);
+    return this.cops.map((c) => [Math.round(c.ph.x * 10) / 10, Math.round(c.ph.z * 10) / 10, Math.round(c.ph.yaw * 100) / 100, c.dead || !c.vis.lightsOn ? 1 : 0, Math.round(c.ph.y * 10) / 10]);
   }
 }

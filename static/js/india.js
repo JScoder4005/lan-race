@@ -70,10 +70,10 @@ function treeInstances(scene, list, kind, detail = 1) {
     const cI = new THREE.InstancedMesh(crown, new THREE.MeshLambertMaterial({ color: 0x2f5a22, side: THREE.DoubleSide }), list.length);
     list.forEach((t, i) => {
       e.set(t.lean * Math.cos(t.yaw), 0, t.lean * Math.sin(t.yaw)); q.setFromEuler(e);
-      m.compose(p.set(t.x, 0, t.z), q, s.set(1, t.h, 1)); tI.setMatrixAt(i, m);
+      m.compose(p.set(t.x, t.y, t.z), q, s.set(1, t.h, 1)); tI.setMatrixAt(i, m);
       const top = new THREE.Vector3(0, t.h, 0).applyQuaternion(q);
       e.set(0, t.yaw, 0); q.setFromEuler(e);
-      m.compose(p.set(t.x + top.x, top.y, t.z + top.z), q, s.set(t.s, t.s, t.s)); cI.setMatrixAt(i, m);
+      m.compose(p.set(t.x + top.x, t.y + top.y, t.z + top.z), q, s.set(t.s, t.s, t.s)); cI.setMatrixAt(i, m);
     });
     scene.add(tI, cI);
     return;
@@ -83,9 +83,9 @@ function treeInstances(scene, list, kind, detail = 1) {
   const tI = new THREE.InstancedMesh(trunk, trunkMat, list.length);
   const cI = new THREE.InstancedMesh(canopy, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), list.length);
   list.forEach((t, i) => {
-    m.compose(p.set(t.x, 0, t.z), q.identity(), s.set(t.trunkW || 1, t.h, t.trunkW || 1)); tI.setMatrixAt(i, m);
+    m.compose(p.set(t.x, t.y - 0.5, t.z), q.identity(), s.set(t.trunkW || 1, t.h + 0.5, t.trunkW || 1)); tI.setMatrixAt(i, m);
     e.set(0, t.yaw, 0); q.setFromEuler(e);
-    m.compose(p.set(t.x, t.h + t.s * 0.35, t.z), q, s.set(t.s * 1.25, t.s * 0.7, t.s * 1.15)); cI.setMatrixAt(i, m);
+    m.compose(p.set(t.x, t.y + t.h + t.s * 0.35, t.z), q, s.set(t.s * 1.25, t.s * 0.7, t.s * 1.15)); cI.setMatrixAt(i, m);
     cI.setColorAt(i, col.setHSL(0.27 + t.hue * 0.06, 0.45, 0.13 + t.hue * 0.08));
   });
   scene.add(tI, cI);
@@ -114,10 +114,10 @@ export function buildIndia(scene, track, world, T, plans) {
       const along = -b.w / 2 + 0.5 + w * (i + 0.5);
       const fx = b.x + nx * (b.d / 2 + 0.06) + tx * along, fz = b.z + nz * (b.d / 2 + 0.06) + tz * along;
       const k = Math.floor(r() * 4);
-      quad(sp, su, null, [fx, 1.75, fz], [tx, 0, tz], up, w - 0.3, 3.2, k * 0.25, 0, k * 0.25 + 0.25, 1);
+      quad(sp, su, null, [fx, b.y0 + 1.75, fz], [tx, 0, tz], up, w - 0.3, 3.2, k * 0.25, 0, k * 0.25 + 0.25, 1);
       const m = boards.meta[Math.floor(r() * boards.meta.length)];
-      quad(bp, bu, null, [fx + nx * 0.12, 4.3, fz + nz * 0.12], [tx, 0, tz], up, w - 0.1, (w - 0.1) / 8 * 1.4, m.u0, m.v0, m.u1, m.v1);
-      quad(gp, null, gc, [fx + nx * 3, 0.2, fz + nz * 3], [-tx, 0, -tz], [nx, 0, nz], w, 6, 0, 0, 1, 1, [1, 0.85, 0.6]);
+      quad(bp, bu, null, [fx + nx * 0.12, b.y0 + 4.3, fz + nz * 0.12], [tx, 0, tz], up, w - 0.1, (w - 0.1) / 8 * 1.4, m.u0, m.v0, m.u1, m.v1);
+      quad(gp, null, gc, [fx + nx * 3, b.y0 + 0.2, fz + nz * 3], [-tx, 0, -tz], [nx, 0, nz], w, 6, 0, 0, 1, 1, [1, 0.85, 0.6]);
       if (r() < 0.5) {
         const s = track.nearest(fx, fz);
         reflections.push([s.x + s.tz * Math.sign(s.lateral) * (HW - 2), s.z - s.tx * Math.sign(s.lateral) * (HW - 2), s.tx, s.tz, 10, 2.4, rgb(m.color), 0.35]);
@@ -136,7 +136,7 @@ export function buildIndia(scene, track, world, T, plans) {
     for (const b of world.boxes) {
       if (b.h > 35 || r() < 0.45) continue;
       const n = 1 + Math.floor(r() * 3);
-      for (let i = 0; i < n; i++) tanks.push(new THREE.CylinderGeometry(0.75, 0.75, 1.3, 10).translate(b.x + (r() - 0.5) * b.w * 0.6, b.h + 0.65, b.z + (r() - 0.5) * b.d * 0.6));
+      for (let i = 0; i < n; i++) tanks.push(new THREE.CylinderGeometry(0.75, 0.75, 1.3, 10).translate(b.x + (r() - 0.5) * b.w * 0.6, b.y0 + b.h + 0.65, b.z + (r() - 0.5) * b.d * 0.6));
     }
     if (tanks.length) scene.add(new THREE.Mesh(mergeGeometries(tanks), new THREE.MeshLambertMaterial({ color: 0x141414 })));
   }
@@ -161,7 +161,7 @@ export function buildIndia(scene, track, world, T, plans) {
           const p = track.sample(d + (r() - 0.5) * 6, side * lat);
           const n = track.nearest(p.x, p.z);
           if (Math.abs(n.lateral) < HW + 1.5) continue;
-          const t = { x: p.x, z: p.z, yaw: r() * 6.28, hue: r() };
+          const t = { x: p.x, y: world.groundY(p.x, p.z), z: p.z, yaw: r() * 6.28, hue: r() };
           if (usePalm) palms.push({ ...t, h: 8 + r() * 7, s: 0.9 + r() * 0.4, lean: (r() - 0.5) * 0.25 });
           else leafy.push({ ...t, h: kind === 'forest' ? 6 + r() * 8 : 3.5 + r() * 2.5, s: kind === 'forest' ? 3 + r() * 3 : 4 + r() * 2.5, trunkW: 1 + r() * 0.6 });
         }
@@ -186,7 +186,7 @@ export function buildIndia(scene, track, world, T, plans) {
     if (bushes.length) {
       const im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 6, 4), new THREE.MeshLambertMaterial({ color: 0x2e5a1c }), bushes.length);
       const m = new THREE.Matrix4();
-      bushes.forEach((p, i) => im.setMatrixAt(i, m.makeScale(1.1, 0.7, 1.1).setPosition(p.x, 0.5, p.z)));
+      bushes.forEach((p, i) => im.setMatrixAt(i, m.makeScale(1.1, 0.7, 1.1).setPosition(p.x, world.groundY(p.x, p.z) + 0.5, p.z)));
       scene.add(im);
     }
   }
@@ -204,19 +204,20 @@ export function buildIndia(scene, track, world, T, plans) {
       for (let d = d0; d <= d1; d += 8) {
         const a = track.sample(d, side * (SIDEWALK_OUT + beach)), b = track.sample(d, side * (SIDEWALK_OUT + beach + 2500));
         const sa = track.sample(d, side * SIDEWALK_OUT);
-        pos.push([a.x, a.z, b.x, b.z]); sandPos.push([sa.x, sa.z, a.x, a.z]);
+        pos.push([a.x, a.z, b.x, b.z, a.y - 1.5]); sandPos.push([sa.x, sa.z, a.x, a.z, a.y + 0.1]);
       }
-      const strip = (rows, y, mat) => {
+      const strip = (rows, dy, mat) => {
         const v = [];
         for (let i = 0; i < rows.length - 1; i++) {
-          const [ax, az, bx, bz] = rows[i], [cx, cz, dx, dz] = rows[i + 1];
-          v.push(ax, y, az, bx, y, bz, dx, y, dz, ax, y, az, dx, y, dz, cx, y, cz);
+          const [ax, az, bx, bz, y0] = rows[i], [cx, cz, dx, dz, y1] = rows[i + 1];
+          const ya = y0 + dy, yb = y1 + dy;
+          v.push(ax, ya, az, bx, ya, bz, dx, yb, dz, ax, ya, az, dx, yb, dz, cx, yb, cz);
         }
         const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
         const mesh = new THREE.Mesh(g, mat); mesh.material.side = THREE.DoubleSide; scene.add(mesh);
       };
-      strip(pos, -0.25, water);
-      if (beach > 0) strip(sandPos, 0.06, sand);
+      strip(pos, 0, water);
+      if (beach > 0) strip(sandPos, 0, sand);
     }
   }
 
@@ -235,7 +236,7 @@ export function buildIndia(scene, track, world, T, plans) {
       if (prev) {
         const len = Math.hypot(p.x - prev.x, p.z - prev.z);
         const mx = (p.x + prev.x) / 2, mz = (p.z + prev.z) / 2, yaw = Math.atan2(p.x - prev.x, p.z - prev.z);
-        const m = new THREE.Matrix4().makeRotationY(yaw).setPosition(mx, 0, mz);
+        const m = new THREE.Matrix4().makeRotationY(yaw).setPosition(mx, (p.y + prev.y) / 2, mz);
         deck.push(new THREE.BoxGeometry(8, 1.2, len + 0.05).translate(0, y, 0).applyMatrix4(m));
         for (const sx of [-1, 1]) {
           deck.push(new THREE.BoxGeometry(0.35, 1.4, len + 0.05).translate(sx * 3.9, y + 1.3, 0).applyMatrix4(m));
@@ -246,7 +247,7 @@ export function buildIndia(scene, track, world, T, plans) {
     }
     for (let d = d0 + 10; d < d1; d += 30) {
       const p = track.sample(d, lat);
-      const m = new THREE.Matrix4().makeRotationY(p.yaw).setPosition(p.x, 0, p.z);
+      const m = new THREE.Matrix4().makeRotationY(p.yaw).setPosition(p.x, p.y, p.z);
       piers.push(new THREE.BoxGeometry(1.6, y - 0.6, 1.6).translate(0, (y - 0.6) / 2, 0).applyMatrix4(m));
       piers.push(new THREE.BoxGeometry(6, 0.9, 2).translate(0, y - 1, 0).applyMatrix4(m));
     }
@@ -257,7 +258,7 @@ export function buildIndia(scene, track, world, T, plans) {
     for (const [name, f] of M.stations) {
       const d = track.startDist + f * span;
       const p = track.sample(d, lat);
-      const g = new THREE.Group(); g.position.set(p.x, 0, p.z); g.rotation.y = p.yaw;
+      const g = new THREE.Group(); g.position.set(p.x, p.y, p.z); g.rotation.y = p.yaw;
       const body = new THREE.Mesh(new THREE.BoxGeometry(14, 6, 70), new THREE.MeshStandardMaterial({ color: 0xd8d4cc, roughness: 0.7 })); body.position.y = y + 3.2; g.add(body);
       const roof = new THREE.Mesh(new THREE.BoxGeometry(16, 0.6, 74), new THREE.MeshStandardMaterial({ color: 0x5a5f66 })); roof.position.y = y + 6.6; g.add(roof);
       const glow = new THREE.Mesh(new THREE.BoxGeometry(14.2, 0.5, 70.2), new THREE.MeshBasicMaterial({ color: new THREE.Color(M.color).multiplyScalar(2.2) })); glow.position.y = y + 1.2; g.add(glow);
@@ -287,7 +288,7 @@ export function buildIndia(scene, track, world, T, plans) {
       for (let i = 0; i < 6; i++) {
         const s = track.sample(head - dir * i * 20.6, lat, tmp);
         qq.setFromAxisAngle(yAxis, s.yaw);
-        coaches.setMatrixAt(i, mtx.compose(pv.set(s.x, y + 2.7, s.z), qq, sv));
+        coaches.setMatrixAt(i, mtx.compose(pv.set(s.x, s.y + y + 2.7, s.z), qq, sv));
       }
       coaches.instanceMatrix.needsUpdate = true;
     };
@@ -305,10 +306,10 @@ export function buildIndia(scene, track, world, T, plans) {
       if (ws(d) === side) continue;
       const p = track.sample(d, side * (SIDEWALK_OUT - 1.3));
       const nx = -side * p.tz, nz = side * p.tx;
-      const m = new THREE.Matrix4().makeRotationY(Math.atan2(nx, nz)).setPosition(p.x, 0.17, p.z);
+      const m = new THREE.Matrix4().makeRotationY(Math.atan2(nx, nz)).setPosition(p.x, p.y + 0.17, p.z);
       body.push(new THREE.BoxGeometry(2.4, 2.2, 1.6).translate(0, 1.1, 0).applyMatrix4(m));
       awn.push(new THREE.BoxGeometry(3, 0.08, 2.2).translate(0, 2.45, 0.5).applyMatrix4(m));
-      quad(fronts, fu, null, [p.x + nx * 0.82, 1.25, p.z + nz * 0.82], [nz, 0, -nx], up, 2.2, 1.6, 0, 0, 1, 1);
+      quad(fronts, fu, null, [p.x + nx * 0.82, p.y + 1.25, p.z + nz * 0.82], [nz, 0, -nx], up, 2.2, 1.6, 0, 0, 1, 1);
       reflections.push([p.x + nx * 6, p.z + nz * 6, p.tx, p.tz, 6, 2, [1, 0.9, 0.6], 0.3]);
     }
     if (body.length) {
@@ -330,7 +331,7 @@ export function buildIndia(scene, track, world, T, plans) {
       const out = k > 0 ? -1 : 1; // outside of the bend
       const d = track.cum[i];
       const p = track.sample(d, out * (HW + 1.5));
-      quad(chev, cu, null, [p.x, 1.4, p.z], out > 0 ? [p.tx, 0, p.tz] : [-p.tx, 0, -p.tz], up, 1.6, 0.8, 0, 0, 1, 1);
+      quad(chev, cu, null, [p.x, p.y + 1.4, p.z], out > 0 ? [p.tx, 0, p.tz] : [-p.tx, 0, -p.tz], up, 1.6, 0.8, 0, 0, 1, 1);
     }
     if (chev.length) scene.add(new THREE.Mesh(geo(chev, cu), new THREE.MeshBasicMaterial({ map: tex(c), color: new THREE.Color(1.4, 1.4, 1.4), side: THREE.DoubleSide })));
   }
@@ -339,7 +340,7 @@ export function buildIndia(scene, track, world, T, plans) {
     for (let d = 5; d < L; d += 10) for (const lat of [0, HW - 0.4, -(HW - 0.4)]) pts.push(track.sample(d, lat));
     const im = new THREE.InstancedMesh(new THREE.BoxGeometry(0.18, 0.05, 0.18), new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.4, 0.6) }), pts.length);
     const m = new THREE.Matrix4();
-    pts.forEach((p, i) => im.setMatrixAt(i, m.makeTranslation(p.x, 0.05, p.z)));
+    pts.forEach((p, i) => im.setMatrixAt(i, m.makeTranslation(p.x, p.y + 0.05, p.z)));
     scene.add(im);
   }
 
@@ -354,8 +355,8 @@ export function buildIndia(scene, track, world, T, plans) {
       const m = ads.meta[Math.floor(r() * ads.meta.length)];
       const fwd = [-p.tx, 0, -p.tz]; // face oncoming drivers
       const right = [fwd[2], 0, -fwd[0]];
-      quad(hp, hu, null, [p.x, 9, p.z], right, up, 14, 14 / 8 * 2.2, m.u0, m.v0, m.u1, m.v1);
-      for (const s of [-4, 4]) poles.push(new THREE.CylinderGeometry(0.2, 0.2, 9, 6).translate(p.x + right[0] * s, 4.5, p.z + right[2] * s));
+      quad(hp, hu, null, [p.x, p.y + 9, p.z], right, up, 14, 14 / 8 * 2.2, m.u0, m.v0, m.u1, m.v1);
+      for (const s of [-4, 4]) poles.push(new THREE.CylinderGeometry(0.2, 0.2, 9, 6).translate(p.x + right[0] * s, p.y + 4.5, p.z + right[2] * s));
       reflections.push([track.sample(d).x, track.sample(d).z, p.tx, p.tz, 14, 3, rgb(m.color), 0.25]);
     }
     if (hp.length) {
@@ -365,7 +366,7 @@ export function buildIndia(scene, track, world, T, plans) {
   }
 
   buildShared(scene, track, world, r, { skipPoles: (d, side) => T.metro && side === T.metro.side });
-  const landmarks = buildLandmarks(scene, track, T, plans);
+  const landmarks = buildLandmarks(scene, track, T, plans, world.groundY);
   const refl = buildReflections(scene, track, world, reflections);
   return {
     setWet: refl.setWet,

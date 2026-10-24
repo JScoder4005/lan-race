@@ -13,7 +13,7 @@ export class Particles {
     this.max = max; this.n = 0; this.head = 0;
     this.pos = new Float32Array(max * 3); this.size = new Float32Array(max); this.alpha = new Float32Array(max);
     this.vel = new Float32Array(max * 3); this.life = new Float32Array(max); this.maxLife = new Float32Array(max);
-    this.grow = new Float32Array(max); this.a0 = new Float32Array(max); this.grav = new Float32Array(max); this.drag = new Float32Array(max);
+    this.grow = new Float32Array(max); this.a0 = new Float32Array(max); this.grav = new Float32Array(max); this.drag = new Float32Array(max); this.floor = new Float32Array(max);
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute('size', new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
@@ -34,7 +34,7 @@ export class Particles {
     this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
     this.vel[i * 3] = vx; this.vel[i * 3 + 1] = vy; this.vel[i * 3 + 2] = vz;
     this.life[i] = life; this.maxLife[i] = life; this.size[i] = size; this.grow[i] = grow;
-    this.a0[i] = alpha; this.alpha[i] = alpha; this.grav[i] = grav; this.drag[i] = drag;
+    this.a0[i] = alpha; this.alpha[i] = alpha; this.grav[i] = grav; this.drag[i] = drag; this.floor[i] = y - 0.4;
     this.busy = true;
   }
 
@@ -51,7 +51,7 @@ export class Particles {
       this.vel[i * 3] *= dr; this.vel[i * 3 + 2] *= dr;
       this.vel[i * 3 + 1] = this.vel[i * 3 + 1] * dr - this.grav[i] * dt;
       this.pos[i * 3] += this.vel[i * 3] * dt; this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt; this.pos[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
-      if (this.pos[i * 3 + 1] < 0.05) { this.pos[i * 3 + 1] = 0.05; this.vel[i * 3 + 1] *= -0.3; }
+      if (this.pos[i * 3 + 1] < this.floor[i]) { this.pos[i * 3 + 1] = this.floor[i]; this.vel[i * 3 + 1] *= -0.3; }
       this.size[i] += this.grow[i] * dt;
       this.alpha[i] = this.a0[i] * k * Math.min(1, (1 - k) * 8);
     }
@@ -82,14 +82,14 @@ export class Skidmarks {
   }
 
   // key identifies one tire track; call every frame while sliding, stop() when not.
-  add(key, x, z, dx, dz, strength) {
+  add(key, x, z, dx, dz, strength, gy = 0) {
     const prev = this.last.get(key);
     this.last.set(key, [x, z]);
     if (!prev) return;
     const [px, pz] = prev;
     const seg = Math.hypot(x - px, z - pz);
     if (seg < 0.05 || seg > 4) return;
-    const w = 0.16, nx = -dz * w, nz = dx * w, y = 0.03;
+    const w = 0.16, nx = -dz * w, nz = dx * w, y = gy + 0.03;
     const q = [[px + nx, pz + nz], [px - nx, pz - nz], [x - nx, z - nz], [x + nx, z + nz]];
     const i = this.head; this.head = (this.head + 1) % this.max;
     const o = i * 18;
@@ -141,7 +141,7 @@ export class Rain {
       const sx = this.seed[i * 3], sy = this.seed[i * 3 + 1], sz = this.seed[i * 3 + 2];
       const x = cam.x + ((((sx * S - cam.x) % S) + S) % S) - S / 2;
       const z = cam.z + ((((sz * S - cam.z) % S) + S) % S) - S / 2;
-      const y = H - ((sy * H + this.t * fall) % H) - 2;
+      const y = cam.y + H * 0.6 - ((sy * H + this.t * fall) % H);
       const o = i * 6;
       this.pos[o] = x; this.pos[o + 1] = y; this.pos[o + 2] = z;
       this.pos[o + 3] = x + tx; this.pos[o + 4] = y - len; this.pos[o + 5] = z + tz;

@@ -276,7 +276,7 @@ export function buildShared(scene, track, world, r, opts = {}) {
   for (const o of track.overpasses) {
     const p = track.sample(o.dist);
     const ang = Math.atan2(p.tx, p.tz) + Math.PI / 2 + o.skew;
-    const m = new THREE.Matrix4().makeRotationY(ang).setPosition(p.x, 0, p.z);
+    const m = new THREE.Matrix4().makeRotationY(ang).setPosition(p.x, p.y, p.z);
     const len = 420, y = o.h;
     ovGeos.push(new THREE.BoxGeometry(16, 1.8, len).translate(0, y, 0).applyMatrix4(m));
     for (const s of [-1, 1]) {
@@ -289,7 +289,7 @@ export function buildShared(scene, track, world, r, opts = {}) {
       }
     }
     ovGeos.push(new THREE.BoxGeometry(14, 1.2, 2.6).translate(0, y - 1.3, 30).applyMatrix4(m), new THREE.BoxGeometry(14, 1.2, 2.6).translate(0, y - 1.3, -30).applyMatrix4(m));
-    world.lamps.push({ x: p.x, z: p.z, y: y - 1.2, color: 0xcfdcff });
+    world.lamps.push({ x: p.x, z: p.z, y: p.y + y - 1.2, color: 0xcfdcff });
   }
   if (ovGeos.length) {
     scene.add(new THREE.Mesh(mergeGeometries(ovGeos), concrete));
@@ -303,12 +303,12 @@ export function buildShared(scene, track, world, r, opts = {}) {
     for (const side of [1, -1]) {
       if (inTunnel(d) || skipPoles(d, side) || track.overpasses.some((o) => Math.abs(track.delta(d, o.dist)) < 25)) { prev[side] = null; continue; }
       const p = track.sample(d, side * (SIDEWALK_OUT - 0.35));
-      const m = new THREE.Matrix4().makeRotationY(p.yaw).setPosition(p.x, 0, p.z);
+      const m = new THREE.Matrix4().makeRotationY(p.yaw).setPosition(p.x, p.y, p.z);
       poles.push(new THREE.CylinderGeometry(0.15, 0.2, 11, 7).translate(0, 5.5, 0).applyMatrix4(m));
       poles.push(new THREE.BoxGeometry(2.0, 0.12, 0.12).translate(0, 9.6, 0).applyMatrix4(m), new THREE.BoxGeometry(1.4, 0.1, 0.1).translate(0, 10.3, 0).applyMatrix4(m));
       if (r() < 0.25) poles.push(new THREE.CylinderGeometry(0.32, 0.32, 1.1, 8).translate(0.45, 8.3, 0).applyMatrix4(m));
       const lx = p.tz, lz = -p.tx;
-      const anchors = [[-0.9, 9.62], [0.9, 9.62], [-0.6, 10.32], [0.6, 10.32]].map(([o, y]) => [p.x + lx * o, y, p.z + lz * o]);
+      const anchors = [[-0.9, 9.62], [0.9, 9.62], [-0.6, 10.32], [0.6, 10.32]].map(([o, y]) => [p.x + lx * o, y + p.y, p.z + lz * o]);
       if (prev[side]) {
         anchors.forEach((a, i) => {
           const b = prev[side][i];
@@ -325,7 +325,8 @@ export function buildShared(scene, track, world, r, opts = {}) {
         const q = track.sample(d, -(SIDEWALK_OUT - 0.35));
         for (let k = 0; k < 10; k++) {
           const t0 = k / 10, t1 = (k + 1) / 10, sag = (t) => 4 * t * (1 - t) * 1.2;
-          wire.push(p.x + (q.x - p.x) * t0, 9.6 - sag(t0), p.z + (q.z - p.z) * t0, p.x + (q.x - p.x) * t1, 9.6 - sag(t1), p.z + (q.z - p.z) * t1);
+          const y0 = p.y + (q.y - p.y) * t0, y1 = p.y + (q.y - p.y) * t1;
+          wire.push(p.x + (q.x - p.x) * t0, y0 + 9.6 - sag(t0), p.z + (q.z - p.z) * t0, p.x + (q.x - p.x) * t1, y1 + 9.6 - sag(t1), p.z + (q.z - p.z) * t1);
         }
       }
     }
@@ -341,7 +342,7 @@ export function buildShared(scene, track, world, r, opts = {}) {
     const p = track.sample(d);
     for (let lat = -HW + 0.9; lat < HW - 0.5; lat += 1.0) {
       const q = track.sample(d, lat);
-      quad(zp, null, null, [q.x, 0.032, q.z], [p.tz, 0, -p.tx], [p.tx, 0, p.tz], 0.5, 4, 0, 0, 1, 1);
+      quad(zp, null, null, [q.x, q.y + 0.032, q.z], [p.tz, 0, -p.tx], [p.tx, 0, p.tz], 0.5, 4, 0, 0, 1, 1);
     }
   }
   const zg = geo(zp); zg.computeVertexNormals();
@@ -363,7 +364,7 @@ export function buildReflections(scene, track, world, reflections) {
   }, 64, 64);
   const rp = [], ru = [], rc = [];
   for (const [x0, z0, tx, tz, len, wd, c, k] of reflections) {
-    quad(rp, ru, rc, [x0, 0.04, z0], [tz, 0, -tx], [tx, 0, tz], wd, len, 0, 0, 1, 1, [c[0] * k, c[1] * k, c[2] * k]);
+    quad(rp, ru, rc, [x0, track.nearest(x0, z0).y + 0.04, z0], [tz, 0, -tx], [tx, 0, tz], wd, len, 0, 0, 1, 1, [c[0] * k, c[1] * k, c[2] * k]);
   }
   const rg = geo(rp, ru, rc);
   const refl = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ map: streak, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));

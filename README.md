@@ -16,7 +16,13 @@ Real roads built from OpenStreetMap routes (sprint from start to finish, two-way
 
 Bengaluru (Tin Factory → Brigade Senate 2) · Chennai · Mysuru · Wayanad ghat · Kannur → Thalassery · Ernakulam · Thiruvananthapuram · Hyderabad · Neon Harbor circuit
 
-`scripts/make-maps.py` regenerates the map files, `scripts/make-font.sh` the sign fonts, `scripts/fetch-vendor.sh` the third-party assets.
+- Real elevation from SRTM data: roads climb and dip, and the surrounding terrain follows the hills (the Wayanad ghat climbs about 700 m).
+- Real landmarks along each route from OpenStreetMap/Wikidata, with roadside boards showing their photos from Wikimedia Commons.
+- Local traffic per city: autos, delivery scooters, bikes, lorries and city buses in regional liveries (BMTC, KSRTC, MTC, TGSRTC and private operators). Liveries are recreated in colour and lettering only; official emblems are not included.
+- Mass-based collisions: hitting an auto or scooter sends it flying, while buses and lorries barely move.
+- The lobby shows a route map with landmarks and an elevation profile for every map.
+
+`scripts/make-maps.py` regenerates the map files (`--pois` refreshes only landmarks/photos), `scripts/make-font.sh` the sign fonts, `scripts/fetch-vendor.sh` the third-party assets.
 
 ## Controls
 
@@ -25,6 +31,8 @@ W/↑ throttle · S/↓ brake · A D/← → steer · Space handbrake · Shift/N
 ## Credits
 
 - Road geometry © OpenStreetMap contributors (ODbL), routed with OSRM
+- Elevation: SRTM (NASA/USGS, public domain) via OpenTopoData
+- Landmark data: Wikidata (CC0); landmark photos from Wikimedia Commons under CC/PD licences, listed with authors in PHOTO_CREDITS.md
 - Ferrari 458 Italia model by vicent091036 — CC-BY 4.0 (via three.js examples)
 - Concept car by Eric Chadwick / Darmstadt Graphics Group — CC-BY 4.0 (Khronos glTF Sample Assets)
 - Traffic vehicles: Kenney Car Kit — CC0

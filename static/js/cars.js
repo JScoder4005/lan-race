@@ -6,14 +6,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // Player car roster. Meshes are matched by node or material name so new models only need a config entry.
 export const CARS = {
   ferrari: {
-    name: 'FERRARI 458 SPIDER', url: 'models/ferrari.glb', power: 1.0, grip: 1.0,
+    name: 'FERRARI 458 SPIDER', url: 'models/ferrari.glb', power: 1.0, grip: 1.0, mass: 1500,
     stats: { speed: 0.78, accel: 0.8, handling: 0.88 },
     wheels: ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'],
     paint: (o) => o.name === 'body', glass: (o) => o.name === 'glass',
     brake: (o) => o.name === 'brakes', head: (o) => o.name === 'lights',
   },
   concept: {
-    name: 'CONCEPT HYPERCAR', url: 'models/carconcept.glb', power: 1.12, grip: 0.95,
+    name: 'CONCEPT HYPERCAR', url: 'models/carconcept.glb', power: 1.12, grip: 0.95, mass: 1450,
     stats: { speed: 0.9, accel: 0.88, handling: 0.74 },
     wheels: ['WheelFrontL', 'WheelFrontR', 'WheelRearL', 'WheelRearR'],
     paint: (o) => /^Paint 1/.test(o.material?.name || ''), glass: (o) => o.material?.name === 'Glass',
@@ -229,8 +229,8 @@ export class CarVisual {
 
   // s: {x,z,yaw,fwd,steer,braking,nitro}
   update(dt, s, t) {
-    this.root.position.x = s.x; this.root.position.z = s.z;
-    this.root.rotation.y = s.yaw;
+    this.root.position.set(s.x, (s.y || 0) + 0.02, s.z);
+    this.root.rotation.set(-(s.pitch || 0), s.yaw, 0, 'YXZ');
     this.spin += (s.fwd ?? 0) * dt;
     const steer = -(s.steer || 0) * 0.5;
     for (const w of this.wheels) {

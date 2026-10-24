@@ -108,4 +108,9 @@ button.go:hover { filter: brightness(1.12); }
 #lyNext { font: 700 13px Arial; color: #5d6577; min-height: 18px; margin-top: 6px; }
 #mapSel { width: 100%; background: #0b0f18; border: 1px solid #263044; color: #fff; font: 700 15px Arial; padding: 10px; margin-bottom: 12px; outline: none; }
 #mapSel:disabled { color: #aeb7c9; }
+#mapPreview { width: 100%; aspect-ratio: 32 / 15; display: block; background: #070a11; border: 1px solid #263044; margin-bottom: 8px; }
+#mapThumbs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 14px; }
+#mapThumbs canvas { width: 100%; aspect-ratio: 4 / 3; background: #070a11; border: 1px solid #263044; cursor: pointer; }
+#mapThumbs canvas.on { border-color: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+#mapThumbs.locked canvas { cursor: default; }
 .menu-left, .menu-right { overflow-y: auto; max-height: calc(100vh - 96px); }

@@ -1,0 +1,48 @@
+# Photo credits
+
+Landmark photos shown on in-game boards, from Wikimedia Commons under the licences listed.
+
+- Benniganahalli (BENGALURU): Sameer2905 · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Benniganahalli_metro_station_(Entrance).jpg
+- Basaweshwara temple inscription (BENGALURU): Udaya Kumar P L · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Basveshwara_temple_inscription.jpg
+- Hebbal lake (BENGALURU): Shyamal · CC BY 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:HebbalLake.jpg
+- University of Madras (CHENNAI): Jonas Buchholz (Jbuchholz) · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Madras_University_Senate_House.jpg
+- Presidency College (CHENNAI): Pinakpani · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Chennai_Presidency_College_building_in_Chennai_14.jpg
+- Thiruvallikeni railway station (CHENNAI): Pinakpani · CC BY 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Thiruvallikeni_railway_station_01.jpg
+- Vivekanandar Illam (CHENNAI): SriniG · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Vivekanandar_Illam.jpg
+- Queen Mary's College (CHENNAI): Rasnaboy · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:QueenMarysCollege.jpg
+- Chennai Lighthouses (CHENNAI): Balamurugan Srinivasan · CC BY 2.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Chennai_Light_House.jpg
+- San Thome Basilica (CHENNAI): w:user:PlaneMad · CC BY-SA 2.5 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Santhome_Basilica.jpg
+- Ambedkar Manimandapam, Chennai (CHENNAI): Irfanahmed605 · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Ambedkar_Manimandapam.jpg
+- Edward Elliot's Beach (CHENNAI): KARTY JazZ · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Elliots_Beach_at_Besant_Nagar,_Chennai.JPG
+- Mysore Palace (MYSURU): রহিম সৈকত · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:%E0%A6%AE%E0%A6%B9%E0%A7%80%E0%A6%B6%E0%A7%82%E0%A6%B0_%E0%A6%AA%E0%A7%8D%E0%A6%B0%E0%A6%BE%E0%A6%B8%E0%A6%BE%E0%A6%A6%E0%A7%87%E0%A6%B0_%E0%A6%A6%E0%A7%81%E0%A6%9F%E0%A6%BF_%E0%A6%97%E0%A6%AE%E0%A7%8D%E0%A6%AC%E0%A7%81%E0%A6%9C_%E0%A6%9A.jpg
+- St. Bartholomew's Church, Mysore (MYSURU): This Photo was taken by Timothy A. Gonsalves.  Feel free to use my photos, but p · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Front_Bartholomew_Church_Mysore_Karnataka_Jan23_A7C_04866.jpg
+- Karanji Lake fountain (MYSURU): This Photo was taken by Timothy A. Gonsalves.  Feel free to use my photos, but p · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Fountain_Karanji_Mysore_Nov23_A7C_08190.jpg
+- Chamundeshwari Temple (MYSURU): Sanjay Acharya · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Chamundeshwari_Temple.jpg
+- Thamarassery Churam (WAYANAD): Keerikkadanjose · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:View_point_of_Thamarassery_Churam.jpg
+- Kannur Railway Station (KANNUR - THALASSERY): MANOJTV at English Wikipedia · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Kannur_Railway_station.JPG
+- South Bazar (KANNUR - THALASSERY): Anoopan · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:TalukOfficeKannur.jpg
+- Edakkad railway station (KANNUR - THALASSERY): Shagil Kannur · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Edakkad_railway_station.jpg
+- Gundert Museum (KANNUR - THALASSERY): Jameela P. · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Hermann_Gundert_bungalow.jpg
+- Thalassery railway station (KANNUR - THALASSERY): Manojk · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Thalasheri_railway_station.jpg
+- Syro-Malabar Church (ERNAKULAM): Mathen Payyappilly Palakkappilly (User:Achayan) · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Mar_Thoma_Sliva.jpg
+- St. Albert's College (ERNAKULAM): Pinakpani · CC BY 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:St._Albert%27s_College_in_Kochi,_Kerala_03.jpg
+- Ernakulam Town Railway station (ERNAKULAM): Augustus Binu : flickr : Instagram · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Ernakulam_Town_North_Railway_Station_DSW.jpg
+- Jawaharlal Nehru International Stadium (ERNAKULAM): Kamikaze116 at English Wikipedia · Public domain · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Kaloor.jpg
+- St. George's Catholic Forane Church (ERNAKULAM): Tachs · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Edapally_Church.jpg
+- LuLu International Shopping Mall (ERNAKULAM): TEMS.VT. · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Lulu_Mall_Kochi.jpg
+- Padmanabhaswamy Temple (THIRUVANANTHAPURAM): P.K.Niyogi · Public domain · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Thiruvanthapuram_Temple.JPG
+- Consulate General of the United Arab Emirates, Kerala (THIRUVANANTHAPURAM): Manukrishnan80 · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Consulate_General_of_the_United_Arab_Emirates,_Kerala.jpg
+- Thiruvallam Parasurama Temple (THIRUVANANTHAPURAM): Ranjithsiji · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Thiruvallam_Parasurama_Temple_EntranceDSC_8729.jpg
+- Pachallur Sri Kulathingara Bhadrakali Devi Temple (THIRUVANANTHAPURAM): A.messy.shawarma · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:%E0%B4%AA%E0%B4%BE%E0%B4%9A%E0%B5%8D%E0%B4%9A%E0%B4%B2%E0%B5%8D%E0%B4%B2%E0%B5%82%E0%B4%B0%E0%B4%AE%E0%B5%8D%E0%B4%AE%E0%B4%AF%E0%B5%81%E0%B4%9F%E0%B5%86_%E0%B4%A4%E0%B4%BF%E0%B4%B0%E0%B5%81%E0%B4%A8%E0%B4%9F.jpg
+- Vellayani Lake (THIRUVANANTHAPURAM): Akhilan · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Vellayani_lake_at_vavvamoola_bund_road.jpg
+- Halcyon Castle (THIRUVANANTHAPURAM): Laksmo · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Kovalam_Palace_Exterior_-_Dusk_Opt.1_-_Copy.jpg
+- Charminar (HYDERABAD): Gopikrishna Narla · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Charminar-Pride_of_Hyderabad.jpg
+- Sardar Mahal (HYDERABAD): Kavali Chandrakanth KCK · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Sardar_Mahal_Hyderabad_Telangana_5.jpg
+- Purani Haveli (HYDERABAD): Randhir · Public domain · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Purani_haveli.JPG
+- Salar Jung Museum (HYDERABAD): Pinakpani · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Salar_Jung_Museum,_the_building_and_complex_in_Hyderabad_21.jpg
+- Golden Threshold (HYDERABAD): రహ్మానుద్దీన్ · CC BY-SA 3.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Golden_threshold_01.JPG
+- St Joseph's Cathedral (HYDERABAD): Sriharsha · CC BY-SA 2.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:St_Jospeh_Cathedral_Hyderabad.jpg
+- Lal Bahadur Shastri Stadium (HYDERABAD): Cephas 405 at English Wikipedia · Public domain · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Lal_Bahadur_Shastri_Stadium.jpg
+- Hill Fort Palace (HYDERABAD): Unknown authorUnknown author · Public domain · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Hill_Fort_Palace_Hyderabad_1930s.jpg
+- Lumbini Park (HYDERABAD): TripodStories- AB · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Lumbini_Park,_Hyderabad.jpg
+- Buddha Statue of Hyderabad (HYDERABAD): Prabhavathi anaka · CC BY-SA 4.0 · Wikimedia Commons — https://commons.wikimedia.org/wiki/File:Buddha_Statue_of_Hyderabad.jpg

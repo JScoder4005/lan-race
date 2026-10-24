@@ -36,16 +36,16 @@ export function planLandmarks(track, T) {
   return out;
 }
 
-function canvasTex(w, h, draw) {
+export function canvasTex(w, h, draw) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
   return t;
 }
-const basic = (color, k = 1) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k) });
-const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...extra });
+export const basic = (color, k = 1) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(k) });
+export const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...extra });
 
-function labelSign(text, sub, color, w = 30, font = '"Arial Black", Impact, sans-serif') {
+export function labelSign(text, sub, color, w = 30, font = '"Arial Black", Impact, sans-serif') {
   const t = canvasTex(1024, 256, (x, W, H) => {
     x.fillStyle = 'rgba(0,0,0,0)'; x.clearRect(0, 0, W, H);
     x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -80,7 +80,7 @@ function bulbOutline(boxes, spacing, color) {
   return im;
 }
 
-function dome(r, h, color, spike = true) {
+export function dome(r, h, color, spike = true) {
   const g = new THREE.Group();
   const s = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2), color);
   s.scale.y = h / r; g.add(s);
@@ -88,7 +88,7 @@ function dome(r, h, color, spike = true) {
   return g;
 }
 
-const BUILD = {
+export const BUILD = {
   palace(T) {
     const g = new THREE.Group();
     const stone = std(0xd9cfb8);
@@ -232,7 +232,7 @@ const BUILD = {
 function gateway(track, lm, T) {
   const p = track.sample(lm.d);
   const g = new THREE.Group();
-  g.position.set(p.x, 0, p.z); g.rotation.y = p.yaw;
+  g.position.set(p.x, p.y, p.z); g.rotation.y = p.yaw;
   const pillarMat = std(0xe8d8b8);
   for (const sx of [-1, 1]) {
     const pil = new THREE.Mesh(new THREE.BoxGeometry(2.4, 11, 2.4), pillarMat); pil.position.set(sx * (HW + 2.5), 5.5, 0); g.add(pil);
@@ -263,7 +263,7 @@ function bridgeArches(track, lm) {
     const p = track.sample(lm.d + k * 42 + 21);
     for (const side of [1, -1]) {
       const a = new THREE.Mesh(new THREE.TorusGeometry(20, 0.35, 6, 40, Math.PI), k % 2 ? mat2 : mat);
-      a.position.set(p.x + p.tz * side * (HW + 1.2), 0, p.z - p.tx * side * (HW + 1.2));
+      a.position.set(p.x + p.tz * side * (HW + 1.2), p.y, p.z - p.tx * side * (HW + 1.2));
       a.rotation.y = p.yaw + Math.PI / 2;
       g.add(a);
     }
@@ -271,7 +271,7 @@ function bridgeArches(track, lm) {
   return g;
 }
 
-export function buildLandmarks(scene, track, T, plans) {
+export function buildLandmarks(scene, track, T, plans, groundY = () => 0) {
   const updates = [];
   for (const lm of plans) {
     let obj;
@@ -279,7 +279,7 @@ export function buildLandmarks(scene, track, T, plans) {
     else if (lm.type === 'bridgeArches') obj = bridgeArches(track, lm);
     else if (BUILD[lm.type]) {
       obj = BUILD[lm.type](T, lm);
-      obj.position.set(lm.x, 0, lm.z);
+      obj.position.set(lm.x, groundY(lm.x, lm.z), lm.z);
       obj.rotation.y = lm.yaw;
     }
     if (!obj) continue;

@@ -184,6 +184,7 @@ type inMsg struct {
 	C       float64         `json:"c"`
 	Time    float64         `json:"time"`
 	S       json.RawMessage `json:"s"`
+	K       json.RawMessage `json:"k"`
 }
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
@@ -309,6 +310,16 @@ func (h *Hub) handle(c *Client, m *inMsg) {
 		}
 		if json.Unmarshal(m.S, &s) == nil {
 			c.bounty = s.B
+		}
+	case "knock":
+		b, _ := json.Marshal(map[string]any{"t": "knock", "k": m.K})
+		for id, o := range h.clients {
+			if id != c.id {
+				select {
+				case o.send <- b:
+				default:
+				}
+			}
 		}
 	case "fin":
 		if h.phase == "race" && c.fin == 0 && m.Time > 0 {
