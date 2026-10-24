@@ -1,5 +1,5 @@
 import { CarPhysics, collide, wrapAngle, clamp } from './physics.js';
-import { CarVisual } from './cars.js';
+import { CarVisual, POLICE_CAR } from './cars.js';
 
 const MAX_COPS = [0, 2, 3, 4, 5, 6];
 const LANES = [-6.75, -2.25, 2.25, 6.75];
@@ -33,7 +33,7 @@ export class Pursuit {
     } else {
       ph.place(me.dist - 150 - Math.random() * 60, LANES[Math.floor(Math.random() * 4)], Math.max(20, me.speed * 0.9));
     }
-    const vis = new CarVisual('ferrari', 0x08090c, { police: true, beam: !roadblock });
+    const vis = new CarVisual(POLICE_CAR, 0x08090c, { police: true, beam: !roadblock });
     this.scene.add(vis.root);
     this.cops.push({ ph, vis, health: 100, dead: false, deadT: 0, stuckT: 0, block: !!roadblock, blockDist: roadblock?.dist });
   }

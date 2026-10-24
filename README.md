@@ -23,6 +23,12 @@ Bengaluru (Tin Factory → Brigade Senate 2) · Chennai · Mysuru · Wayanad gha
 - Mass-based collisions: hitting an auto or scooter sends it flying, while buses and lorries barely move.
 - The lobby shows a route map with landmarks and an elevation profile for every map.
 
+## Vehicles
+
+Players pick from Indian cars and two-wheelers, budget to luxury: Maruti Swift / Dzire / Baleno, Honda City, Hyundai Creta, Mahindra Thar / Scorpio, Toyota Innova, BMW 3 Series, Audi A4 / Q7, Mercedes C-Class, Honda Activa, Bajaj Pulsar, TVS Apache, Royal Enfield Classic 350, KTM 390 Duke and Kawasaki Ninja 300. Each uses its real top speed and acceleration (reached in 80% of the real time). Bikes lean into corners and have a rider. Traffic uses real models too (autos, KSRTC/state and Malabar private buses, Tata lorries, Ola EV and delivery scooters), weighted by Indian sales figures.
+
+The models are CC-BY licensed from Sketchfab and are downloaded with `SKETCHFAB_TOKEN=<your API token> python3 scripts/fetch-vehicles.py` (needs Node for gltf-transform). Their authors are listed in `static/models/*/credits.json` and in the game menu. Until they are downloaded the game falls back to the bundled cars.
+
 `scripts/make-maps.py` regenerates the map files (`--pois` refreshes only landmarks/photos), `scripts/make-font.sh` the sign fonts, `scripts/fetch-vendor.sh` the third-party assets.
 
 ## Controls

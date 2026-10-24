@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Track, buildWorld, gridSlot, setRoadWidth } from './track.js';
 import { CarPhysics, collide, clamp, wrapAngle } from './physics.js';
-import { loadCarModels, CarVisual, CARS, CAR_IDS } from './cars.js';
+import { loadCarModels, CarVisual, CARS, CAR_IDS, POLICE_CAR, VEHICLE_CREDITS, vehicleOpts, vehicleMass } from './cars.js';
 import { Traffic, loadTrafficModels } from './traffic.js';
 import { Particles, Skidmarks, Rain } from './fx.js';
 import { buildTokyo } from './tokyo.js';
@@ -61,9 +61,9 @@ const rain = new Rain(scene);
 
 // Graphics presets; AUTO starts high and steps down when frame time stays above ~22ms.
 const QUALITY = {
-  high: { pr: 1.25, msaa: 4, lamps: 4, cops: 3, rain: 2600, bloom: true, blur: true },
-  medium: { pr: 1.0, msaa: 2, lamps: 3, cops: 2, rain: 1400, bloom: true, blur: true },
-  low: { pr: 0.75, msaa: 0, lamps: 2, cops: 1, rain: 700, bloom: false, blur: false },
+  high: { pr: 1.25, msaa: 4, lamps: 4, cops: 3, rain: 2600, bloom: true, blur: true, traffic: 520 },
+  medium: { pr: 1.0, msaa: 2, lamps: 3, cops: 2, rain: 1400, bloom: true, blur: true, traffic: 400 },
+  low: { pr: 0.75, msaa: 0, lamps: 2, cops: 1, rain: 700, bloom: false, blur: false, traffic: 280 },
 };
 let gfxSetting = 'auto';
 try { gfxSetting = localStorage.getItem('nh.gfx') || 'auto'; } catch { /* ignore */ }
@@ -77,6 +77,7 @@ function applyQuality(name) {
   copLights.forEach((l, i) => { l.visible = i < Q.cops; });
   bloom.enabled = Q.bloom;
   rain.setCount(Q.rain);
+  if (traffic) traffic.drawDist = Q.traffic;
   onResize();
   for (const b of document.querySelectorAll('#gfxSeg button')) b.classList.toggle('on', b.dataset.gfx === gfxSetting);
 }
@@ -112,7 +113,6 @@ let myVis = null;
 const remotes = new Map(); // id -> {vis, color, name, cops:[]}
 let name = '', color = PAINTS[0], car = 'ferrari';
 try { name = localStorage.getItem('nh.name') || ''; color = localStorage.getItem('nh.color') || color; car = localStorage.getItem('nh.car') || car; } catch { /* storage unavailable */ }
-if (!CARS[car]) car = 'ferrari';
 if (!name) name = 'Racer' + Math.floor(Math.random() * 900 + 100);
 
 // ---------- UI ----------
@@ -125,7 +125,7 @@ for (const c of PAINTS) {
 }
 function refreshPaint() {
   for (const b of paints.children) b.classList.toggle('on', b.dataset.c === color);
-  if (myVis) myVis.bodyMat.color.set(color);
+  if (myVis) myVis.setColor(color);
 }
 $('name').value = name;
 $('name').addEventListener('input', () => { name = $('name').value.trim() || name; save(); clearTimeout(G.nameT); G.nameT = setTimeout(sendHello, 300); });
@@ -135,6 +135,7 @@ function setCar(id) {
   car = id;
   const c = CARS[car];
   $('carName').textContent = c.name;
+  $('carSpec').textContent = c.auto ? `${c.seg} · ${c.top} km/h · 0-${c.vAcc} ${c.tAcc} s` : '';
   $('stSpeed').style.width = c.stats.speed * 100 + '%';
   $('stAccel').style.width = c.stats.accel * 100 + '%';
   $('stHandling').style.width = c.stats.handling * 100 + '%';
@@ -343,6 +344,7 @@ async function loadMap(id) {
   props.setWet(rain.visible);
   buildPois(city, track, T, poiPlans, world.groundY);
   traffic = new Traffic(city, track, trafficModels, T, id, world.groundY);
+  traffic.drawDist = Q.traffic;
   traffic.onKnock = (gi, k, imp) => {
     net?.send({ t: 'knock', k: { gi, x: k.x, y: k.y, z: k.z, vx: k.vx, vy: k.vy, vz: k.vz, yaw: k.yaw, pitch: 0, roll: 0, wy: k.wy, wp: k.wp, wr: k.wr } });
     if (imp > 6) hud.popup(imp > 14 ? 'WRECKED!' : 'TAKEDOWN', '#ffb400');
@@ -374,7 +376,8 @@ function startEvent(m) {
   G.phase = 'race'; G.mode = m.mode; G.laps = m.laps; G.trafficOn = m.traffic; G.startAt = m.startAt; G.grid = m.grid;
   G.slot = m.grid[net.id] ?? 0;
   const g = gridSlot(track, G.slot);
-  me = new CarPhysics(track, { power: CARS[car].power, grip: CARS[car].grip });
+  me = new CarPhysics(track, vehicleOpts(car));
+  me.voice = CARS[car].voice || 1;
   me.x = g.x; me.z = g.z; me.yaw = g.yaw; me.updateTrack();
   me.frozen = true;
   G.lastDist = me.dist; G.prog = track.delta(me.dist, track.startDist);
@@ -475,7 +478,7 @@ function physicsStep(dt, inp, st) {
   me.step(dt, inp);
   if (frozen || G.finished) return;
   if (traffic.enabled) {
-    const hit = traffic.collideBody(me, CARS[car].mass || 1500, 0.2);
+    const hit = traffic.collideBody(me, vehicleMass(car), 0.2);
     if (hit.impact > 2.5) { onHit(hit.impact, (me.x + hit.car.x) / 2, (me.z + hit.car.z) / 2); hit.car.hitAt = st; }
     for (const tc of traffic.cars) if (!tc.knocked) nearMiss(tc, st);
   }
@@ -663,7 +666,7 @@ function updateRemotes(dt, st, t) {
   }
 }
 function syncRemoteCops(r, arr, dt, t) {
-  while (r.cops.length < arr.length) { const v = new CarVisual('ferrari', 0x08090c, { police: true, beam: false }); scene.add(v.root); r.cops.push(v); }
+  while (r.cops.length < arr.length) { const v = new CarVisual(POLICE_CAR, 0x08090c, { police: true, beam: false }); scene.add(v.root); r.cops.push(v); }
   while (r.cops.length > arr.length) r.cops.pop().dispose();
   arr.forEach((c, i) => { r.cops[i].lightsOn = !c[3]; r.cops[i].update(dt, { x: c[0], z: c[1], y: c[4] || 0, yaw: c[2], fwd: 30 }, t); });
 }
@@ -763,7 +766,7 @@ function frame() {
     if (audio.ctx && musicOn && !music.on) music.start();
     renderLyrics();
   }
-  myVis.update(dt, { x: me.x, z: me.z, y: me.y, pitch: me.pitch, yaw: me.yaw, fwd: me.fwd, steer: me.steer, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
+  myVis.update(dt, { x: me.x, z: me.z, y: me.y, pitch: me.pitch, yaw: me.yaw, fwd: me.fwd, steer: me.steer, lean: me.bike ? me.lean : undefined, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
   myVis.tag.visible = false;
   updateRemotes(dt, st, t);
 
@@ -830,6 +833,10 @@ function ordinal(n) { return n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] 
     const [, tm, idx] = await Promise.all([loadCarModels((p) => { $('loadbar').style.width = Math.round(p * 100) + '%'; }), loadTrafficModels(),
       fetch('maps/index.json').then((r) => r.json())]);
     trafficModels = tm;
+    // CC-BY attribution for downloaded vehicle models
+    const tc = await fetch('models/traffic/credits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+    const vc = { ...tc, ...VEHICLE_CREDITS };
+    if (Object.keys(vc).length) document.querySelector('.credits').append(' · Vehicles (Sketchfab, CC): ' + Object.values(vc).map((c) => `${c.title} by ${c.author}`).join(', '));
     mapIndex = [...idx, TOKYO_INFO];
     rain.visible = true;
     await loadMap('bengaluru');
@@ -837,6 +844,7 @@ function ordinal(n) { return n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] 
     $('loadtext').textContent = 'Failed to load car model: ' + e.message;
     throw e;
   }
+  if (!CAR_IDS.includes(car)) car = CAR_IDS[0];
   myVis = new CarVisual(car, color, { name });
   setCar(car);
   scene.add(myVis.root);

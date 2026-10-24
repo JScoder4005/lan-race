@@ -8,6 +8,22 @@ export function wrapAngle(a) {
 }
 
 const GEARS = [0, 17, 30, 44, 58, 73, 115];
+const GAME = 0.8; // vehicles reach their real 0-100 (or 0-60) in 80% of the real time; top speeds are real
+
+// Tractive model: acc = min(A, P / (v + 9)) - cd*v^2 - rolling. Solves A, P, cd so the vehicle hits its real top speed
+// and accelerates to vAcc (km/h) in tAcc*GAME seconds.
+export function tunePower(topKmh, tAcc, vAcc = 100) {
+  const vt = topKmh / 3.6, target = tAcc * GAME, va = vAcc / 3.6;
+  const model = (A) => { const P = A * (0.35 * vt + 9), cd = Math.max(0, (P / (vt + 9) - 0.25) / (vt * vt)); return { A, P, cd }; };
+  const timeTo = ({ A, P, cd }) => {
+    let v = 0, t = 0;
+    while (v < va && t < 60) { v += (Math.min(A, P / (v + 9)) - cd * v * v - 0.25 * Math.min(1, v)) * 0.01; t += 0.01; }
+    return t;
+  };
+  let lo = 0.5, hi = 30;
+  for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (timeTo(model(mid)) > target) lo = mid; else hi = mid; }
+  return model(hi);
+}
 
 export class CarPhysics {
   constructor(track, opts = {}) {
@@ -21,6 +37,14 @@ export class CarPhysics {
     this.hint = -1; this.dist = 0; this.lateral = 0; this.tx = 0; this.tz = 1; this.y = 0; this.grade = 0; this.pitch = 0;
     this.wallImpact = 0; this.scraping = false; this.frozen = false;
     this.power = opts.power ?? 1; this.grip = opts.grip ?? 1;
+    // per-vehicle drivetrain (defaults: the original supercar tune) and footprint for walls/collisions
+    const tune = opts.top ? tunePower(opts.top, opts.tAcc, opts.vAcc) : { A: 10.5, P: 560, cd: 0.00078 };
+    this.A = tune.A; this.P = tune.P; this.cd = tune.cd;
+    this.gearTop = (opts.top ? opts.top / 3.6 : 85) / 85;
+    this.bike = !!opts.bike;
+    this.hw = opts.hw ?? 0.98; this.hl = opts.hl ?? 2.2;
+    if (opts.half) { this.half = opts.half; this.r = opts.r; }
+    this.lean = 0;
     this._n = {};
   }
 
@@ -78,11 +102,11 @@ export class CarPhysics {
     }
     if (thr > 0) {
       if (fwd < -1) acc += 24 * thr;
-      else acc += thr * Math.min(10.5 * pw, (560 * pw) / (Math.max(fwd, 0) + 9)) + (nitroOn ? 3 : 0);
+      else acc += thr * Math.min(this.A * pw, (this.P * pw) / (Math.max(fwd, 0) + 9)) + (nitroOn ? 3 : 0);
     } else if (inp.brake <= 0.05) {
       acc -= Math.sign(fwd) * Math.min(Math.abs(fwd) * 5, 1.6);
     }
-    acc -= 0.00078 * fwd * Math.abs(fwd) + 0.25 * Math.sign(fwd) * Math.min(1, Math.abs(fwd));
+    acc -= this.cd * fwd * Math.abs(fwd) + 0.25 * Math.sign(fwd) * Math.min(1, Math.abs(fwd));
     if (inp.handbrake) acc -= Math.sign(fwd) * Math.min(Math.abs(fwd) * 4, 5);
     const along = fx * this.tx + fz * this.tz;
     acc -= 9.81 * Math.max(-0.3, Math.min(0.3, this.grade)) * along; // gravity on slopes
@@ -111,7 +135,7 @@ export class CarPhysics {
     // Walls: keep the car's rotated footprint inside the road.
     this.updateTrack();
     const cosR = Math.abs(fx * this.tx + fz * this.tz), sinR = Math.abs(fx * this.tz - fz * this.tx);
-    const ext = 0.98 * cosR + 2.2 * sinR;
+    const ext = this.hw * cosR + this.hl * sinR;
     const lim = HW - ext;
     if (Math.abs(this.lateral) > lim) {
       const s = Math.sign(this.lateral);
@@ -155,10 +179,13 @@ export class CarPhysics {
     // Gearbox / rpm for HUD + audio
     const v = Math.max(0, this.fwd);
     let g = 1;
-    while (g < 6 && v > GEARS[g] * 0.97) g++;
+    while (g < 6 && v > GEARS[g] * this.gearTop * 0.97) g++;
     if (g !== this.gear) { this.shift = 0.16; this.gear = g; }
     this.shift = Math.max(0, this.shift - dt);
-    let rpmT = 1100 + (v / GEARS[g]) * 6900;
+    let rpmT = 1100 + (v / (GEARS[g] * this.gearTop)) * 6900;
+    // two-wheelers lean into turns (centripetal angle), used by the visual
+    const leanT = this.bike ? clamp(Math.atan((this.fwd * this.yawRate) / 9.81), -0.85, 0.85) : 0;
+    this.lean += (leanT - this.lean) * Math.min(1, dt * 8);
     if (thr > 0.1 && v < 12) rpmT += thr * 2000 * (1 - v / 12);
     if (this.drifting && thr > 0.3) rpmT += 900;
     if (this.fwd < -0.5) rpmT = 1100 + (-this.fwd / 16) * 4000;

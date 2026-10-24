@@ -4,23 +4,64 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Player car roster. Meshes are matched by node or material name so new models only need a config entry.
+// Indian roster (Sketchfab CC models fetched by scripts/fetch-vehicles.py): real-world top speed (km/h), 0-100 time
+// (0-60 for scooters/commuters via vAcc), kerb mass (kg) and length (m) used to scale the model. Meshes are matched by
+// material name; wheels are found by node name.
+const veh = (id, name, seg, spec) => ({ name, seg, url: `models/vehicles/${id}.glb`, auto: true, kind: 'car', grip: 1, vAcc: 100, ...spec });
+export const MAT = {
+  paint: /paint|body|fairing|tank|carros|exterior|panel/i, glass: /glass|window|windshield|windscreen|visor/i,
+  brake: /tail|brake|rear.?l(igh)?t|stop.?lamp/i, head: /head.?l(igh)?t|head.?lamp|front.?l(igh)?t|lamp/i, skip: /tyre|tire|rubber|chrome|rim|interior|seat/i,
+};
 export const CARS = {
+  swift: veh('swift', 'MARUTI SUZUKI SWIFT', 'BUDGET HATCHBACK', { top: 165, tAcc: 11.5, mass: 920, len: 3.86 }),
+  dzire: veh('dzire', 'MARUTI SUZUKI DZIRE', 'COMPACT SEDAN', { top: 165, tAcc: 12.6, mass: 960, len: 3.995 }),
+  baleno: veh('baleno', 'MARUTI SUZUKI BALENO', 'PREMIUM HATCHBACK', { top: 170, tAcc: 12.3, mass: 935, len: 3.99 }),
+  city: veh('city', 'HONDA CITY', 'MIDSIZE SEDAN', { top: 190, tAcc: 10.5, mass: 1110, len: 4.58 }),
+  creta: veh('creta', 'HYUNDAI CRETA', 'COMPACT SUV', { top: 190, tAcc: 8.9, mass: 1350, len: 4.33, grip: 0.95 }),
+  thar: veh('thar', 'MAHINDRA THAR', 'OFF-ROADER', { top: 155, tAcc: 10.5, mass: 1750, len: 3.98, grip: 0.88 }),
+  scorpio: veh('scorpio', 'MAHINDRA SCORPIO', 'SUV', { top: 165, tAcc: 11.5, mass: 1900, len: 4.46, grip: 0.9 }),
+  innova: veh('innova', 'TOYOTA INNOVA', 'MPV', { top: 175, tAcc: 11.5, mass: 1750, len: 4.75, grip: 0.92 }),
+  bmw3: veh('bmw3', 'BMW 3 SERIES', 'LUXURY SEDAN', { top: 235, tAcc: 6.2, mass: 1600, len: 4.71, grip: 1.05 }),
+  a4: veh('a4', 'AUDI A4', 'LUXURY SEDAN', { top: 241, tAcc: 7.1, mass: 1580, len: 4.76, grip: 1.05 }),
+  cclass: veh('cclass', 'MERCEDES-BENZ C-CLASS', 'LUXURY SEDAN', { top: 246, tAcc: 7.3, mass: 1650, len: 4.79, grip: 1.05 }),
+  q7: veh('q7', 'AUDI Q7', 'LUXURY SUV', { top: 250, tAcc: 5.9, mass: 2150, len: 5.06, grip: 0.98 }),
+  activa: veh('activa', 'HONDA ACTIVA', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 85, tAcc: 8.6, vAcc: 60, mass: 106, len: 1.83, voice: 1.25 }),
+  scooter125: veh('scooter125', '125CC SCOOTER', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 90, tAcc: 7.8, vAcc: 60, mass: 104, len: 1.87, voice: 1.25 }),
+  pulsar: veh('pulsar', 'BAJAJ PULSAR 150', 'COMMUTER', { kind: 'bike', ride: 'naked', top: 115, tAcc: 4.8, vAcc: 60, mass: 148, len: 2.06, voice: 1.3 }),
+  apache: veh('apache', 'TVS APACHE RTR 180', 'STREET', { kind: 'bike', ride: 'naked', top: 124, tAcc: 4.1, vAcc: 60, mass: 139, len: 2.08, voice: 1.35 }),
+  classic350: veh('classic350', 'ROYAL ENFIELD CLASSIC 350', 'CRUISER', { kind: 'bike', ride: 'cruiser', top: 115, tAcc: 5.0, vAcc: 60, mass: 195, len: 2.15, voice: 0.85 }),
+  duke390: veh('duke390', 'KTM 390 DUKE', 'NAKED SPORT', { kind: 'bike', ride: 'naked', top: 167, tAcc: 5.5, mass: 168, len: 2.0, grip: 1.08, voice: 1.4 }),
+  ninja: veh('ninja', 'KAWASAKI NINJA 300', 'SPORT', { kind: 'bike', ride: 'sport', top: 180, tAcc: 6.5, mass: 179, len: 2.02, grip: 1.1, voice: 1.5 }),
   ferrari: {
-    name: 'FERRARI 458 SPIDER', url: 'models/ferrari.glb', power: 1.0, grip: 1.0, mass: 1500,
+    name: 'FERRARI 458 SPIDER', url: 'models/ferrari.glb', power: 1.0, grip: 1.0, mass: 1500, legacy: true,
     stats: { speed: 0.78, accel: 0.8, handling: 0.88 },
     wheels: ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'],
     paint: (o) => o.name === 'body', glass: (o) => o.name === 'glass',
     brake: (o) => o.name === 'brakes', head: (o) => o.name === 'lights',
   },
   concept: {
-    name: 'CONCEPT HYPERCAR', url: 'models/carconcept.glb', power: 1.12, grip: 0.95, mass: 1450,
+    name: 'CONCEPT HYPERCAR', url: 'models/carconcept.glb', power: 1.12, grip: 0.95, mass: 1450, legacy: true,
     stats: { speed: 0.9, accel: 0.88, handling: 0.74 },
     wheels: ['WheelFrontL', 'WheelFrontR', 'WheelRearL', 'WheelRearR'],
     paint: (o) => /^Paint 1/.test(o.material?.name || ''), glass: (o) => o.material?.name === 'Glass',
     brake: (o) => o.material?.name === 'Brakelight', head: (o) => o.material?.name === 'Headlight',
   },
 };
-export const CAR_IDS = Object.keys(CARS);
+for (const c of Object.values(CARS)) if (c.auto) {
+  c.stats = { speed: Math.min(1, c.top / 260), accel: Math.max(0.08, Math.min(1, 1.15 - c.tAcc * (c.vAcc === 60 ? 1.6 : 1) / 14)), handling: Math.min(1, c.grip * 0.8) };
+  c.paint ||= (o) => MAT.paint.test(o.material?.name || '') && !MAT.skip.test(o.material?.name || '');
+  c.glass ||= (o) => MAT.glass.test(o.material?.name || '');
+  c.brake ||= (o) => MAT.brake.test(o.material?.name || '');
+  c.head ||= (o) => !MAT.brake.test(o.material?.name || '') && MAT.head.test(o.material?.name || '');
+}
+// Selectable vehicles: the Indian roster once downloaded, otherwise the bundled cars. Filled by loadCarModels.
+export let CAR_IDS = [];
+export let POLICE_CAR = 'ferrari';
+export let VEHICLE_CREDITS = {};
+const physOpts = (c) => (c.auto ? { top: c.top, tAcc: c.tAcc, vAcc: c.vAcc, grip: c.grip, bike: c.kind === 'bike', ...(c.kind === 'bike' ? { hw: 0.42, hl: 1.0, half: 1.0, r: 0.42 } : {}) }
+  : { power: c.power, grip: c.grip });
+export const vehicleOpts = (id) => physOpts(CARS[id] || CARS[CAR_IDS[0]]);
+export const vehicleMass = (id) => { const c = CARS[id] || {}; return (c.mass || 1500) + (c.kind === 'bike' ? 75 : 0); };
 
 const protos = {};
 let aoTex = null, beamTex = null;
@@ -38,30 +79,39 @@ export function gltfLoader() {
 }
 
 // Rotates/offsets a loaded model so it faces +Z, sits on y=0 and is centred between its wheels.
-export function normalizeVehicle(scene, wheelNames, scale = 1) {
+export function normalizeVehicle(scene, wheelNames, scale = 1, targetLen = 0) {
   const norm = new THREE.Group();
   norm.add(scene);
   scene.scale.multiplyScalar(scale);
   norm.updateMatrixWorld(true);
-  const wheels = () => wheelNames.map((n) => scene.getObjectByName(n)?.getWorldPosition(new THREE.Vector3()));
+  const objs = wheelNames.map((n) => (typeof n === 'string' ? scene.getObjectByName(n) : n));
+  const centre = (o) => new THREE.Box3().setFromObject(o, true).getCenter(new THREE.Vector3());
+  const wheels = () => objs.map((o) => o && centre(o));
   let wp = wheels();
-  const hasWheels = wp.every(Boolean);
-  if (hasWheels) {
-    const fwd = wp[0].clone().add(wp[1]).sub(wp[2]).sub(wp[3]);
+  const hasWheels = wp.length > 0 && wp.every(Boolean);
+  if (hasWheels) { // first half of the list = front wheels
+    const h = wp.length / 2, fwd = new THREE.Vector3();
+    wp.forEach((p, i) => fwd.addScaledVector(p, i < h ? 1 : -1));
     scene.rotation.y += -Math.atan2(fwd.x, fwd.z);
     norm.updateMatrixWorld(true);
     wp = wheels();
   }
+  if (targetLen) {
+    const b0 = new THREE.Box3().setFromObject(scene, true);
+    scene.scale.multiplyScalar(targetLen / Math.max(0.1, b0.max.z - b0.min.z));
+    norm.updateMatrixWorld(true);
+    wp = hasWheels ? wheels() : wp;
+  }
   const box = new THREE.Box3().setFromObject(scene);
   let cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
   if (hasWheels) {
-    const c = wp.reduce((a, v) => a.add(v), new THREE.Vector3()).multiplyScalar(0.25);
+    const c = wp.reduce((a, v) => a.add(v), new THREE.Vector3()).multiplyScalar(1 / wp.length);
     cx = c.x; cz = c.z;
   }
   let groundY = box.min.y;
   if (hasWheels) {
     groundY = Infinity;
-    for (const n of wheelNames) groundY = Math.min(groundY, new THREE.Box3().setFromObject(scene.getObjectByName(n), true).min.y);
+    for (const o of objs) groundY = Math.min(groundY, new THREE.Box3().setFromObject(o, true).min.y);
   }
   scene.position.x -= cx; scene.position.z -= cz; scene.position.y -= groundY;
   norm.updateMatrixWorld(true);
@@ -72,7 +122,7 @@ export function normalizeVehicle(scene, wheelNames, scale = 1) {
 // Merges a car's meshes by material (body and each wheel separately) to cut draw calls ~3x.
 function bakeCar(norm, cfg) {
   norm.updateMatrixWorld(true);
-  const wheels = cfg.wheels.map((n) => norm.getObjectByName(n));
+  const wheels = cfg.wheelObjs || cfg.wheels.map((n) => norm.getObjectByName(n));
   const groups = new Map();
   const meshes = [];
   norm.traverse((o) => { if (o.isMesh) meshes.push(o); });
@@ -103,17 +153,55 @@ function bakeCar(norm, cfg) {
   }
 }
 
+// Finds wheel nodes by name in a downloaded model: 4 for cars (front pair first), 2 for bikes (front first).
+// The longer horizontal axis is the vehicle length; cfg.flip swaps front/back when a model is authored backwards.
+export function autoWheels(scene, cfg) {
+  scene.updateMatrixWorld(true);
+  const want = cfg.kind === 'bike' ? 2 : 4;
+  const re = /wheel|tire|tyre|rueda|roue|rad\b/i, bad = /steer|cover|arch|well|fender|guard|cap|bolt|nut|brake|disc|caliper|spoke/i;
+  const cands = [];
+  scene.traverse((o) => { if (o !== scene && re.test(o.name) && !bad.test(o.name)) cands.push(o); });
+  const isAnc = (a, b) => { for (let p = b.parent; p; p = p.parent) if (p === a) return true; return false; };
+  let tops = cands.filter((o) => !cands.some((q) => q !== o && isAnc(q, o)));
+  if (tops.length !== want) return null;
+  const c = tops.map((o) => new THREE.Box3().setFromObject(o, true).getCenter(new THREE.Vector3()));
+  const box = new THREE.Box3().setFromObject(scene, true);
+  const axis = box.max.x - box.min.x > box.max.z - box.min.z ? 'x' : 'z';
+  const order = tops.map((o, i) => i).sort((a, b) => c[b][axis] - c[a][axis]);
+  if (cfg.flip) order.reverse();
+  tops = order.map((i) => tops[i]);
+  tops.forEach((o, i) => { o.name = `__wheel${i}`; });
+  return tops;
+}
+
 export async function loadCarModels(onProgress) {
   const loader = gltfLoader();
   const progress = {};
-  await Promise.all(CAR_IDS.map(async (id) => {
+  // downloaded vehicles are listed in their credits manifest (scripts/fetch-vehicles.py)
+  const have = await fetch('models/vehicles/credits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  VEHICLE_CREDITS = have;
+  const all = Object.keys(CARS).filter((id) => !CARS[id].auto || have[id]);
+  const ok = [];
+  await Promise.all(all.map(async (id) => {
     const cfg = CARS[id];
-    const gltf = await loader.loadAsync(cfg.url, (e) => {
-      if (e.total) { progress[id] = e.loaded / e.total; onProgress?.(CAR_IDS.reduce((s, k) => s + (progress[k] || 0), 0) / CAR_IDS.length); }
-    });
-    protos[id] = normalizeVehicle(gltf.scene, cfg.wheels);
-    bakeCar(protos[id].norm, cfg);
+    try {
+      const gltf = await loader.loadAsync(cfg.url, (e) => {
+        if (e.total) { progress[id] = e.loaded / e.total; onProgress?.(all.reduce((s, k) => s + (progress[k] || 0), 0) / all.length); }
+      });
+      if (cfg.auto) {
+        const wheels = autoWheels(gltf.scene, cfg);
+        cfg.wheelObjs = wheels || [];
+        cfg.wheels = (wheels || []).map((o) => o.name);
+        protos[id] = normalizeVehicle(gltf.scene, cfg.wheelObjs, 1, cfg.len);
+        if (!wheels) console.warn(`${id}: wheels not found, no wheel animation`);
+      } else protos[id] = normalizeVehicle(gltf.scene, cfg.wheels);
+      bakeCar(protos[id].norm, cfg);
+      ok.push(id);
+    } catch (e) { if (!cfg.auto) throw e; /* vehicle not downloaded */ }
   }));
+  const indian = Object.keys(CARS).filter((id) => CARS[id].auto && ok.includes(id));
+  CAR_IDS = indian.length ? indian : Object.keys(CARS).filter((id) => CARS[id].legacy);
+  POLICE_CAR = ok.includes('scorpio') ? 'scorpio' : ok.includes('innova') ? 'innova' : 'ferrari';
   aoTex = await new THREE.TextureLoader().loadAsync('models/ferrari_ao.png');
   const c = document.createElement('canvas'); c.width = 64; c.height = 256;
   const x = c.getContext('2d');
@@ -141,9 +229,80 @@ function nameTag(name, color) {
 
 const _q = new THREE.Quaternion(), _x = new THREE.Vector3(1, 0, 0), _m = new THREE.Matrix4();
 
+// Low-poly rider posed for the bike type, sized from the bike's dimensions. Helmet takes the player's colour.
+const riderMats = {
+  suit: new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.75 }),
+  skin: new THREE.MeshStandardMaterial({ color: 0x8a5a3c, roughness: 0.7 }),
+  visor: new THREE.MeshPhysicalMaterial({ color: 0x05070a, roughness: 0.05, metalness: 0.5, clearcoat: 1 }),
+  boot: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.6 }),
+};
+const POSE = { // torso forward lean (rad), seat height, seat z, bar height, bar z, foot z (fractions of length / metres)
+  sport: { lean: 0.95, seatY: 0.8, seatZ: -0.14, barY: 0.86, barZ: 0.26, footY: 0.36, footZ: -0.12, knee: 0.3 },
+  naked: { lean: 0.42, seatY: 0.8, seatZ: -0.12, barY: 1.0, barZ: 0.24, footY: 0.32, footZ: -0.05, knee: 0.28 },
+  scooter: { lean: 0.12, seatY: 0.76, seatZ: -0.1, barY: 1.02, barZ: 0.2, footY: 0.3, footZ: 0.12, knee: 0.34 },
+  cruiser: { lean: 0.05, seatY: 0.74, seatZ: -0.12, barY: 1.02, barZ: 0.22, footY: 0.34, footZ: 0.18, knee: 0.3 },
+};
+function buildRider(parent, d, ride = 'naked', color = 0xffffff) {
+  const P = POSE[ride] || POSE.naked, L = d.l, zc = (d.minZ + d.maxZ) / 2;
+  const g = new THREE.Group();
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const limb = (a, b, r, mat) => {
+    const len = a.distanceTo(b);
+    const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.01, len - 2 * r), 4, 8), mat);
+    m.position.copy(a).add(b).multiplyScalar(0.5);
+    m.quaternion.setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize());
+    g.add(m); return m;
+  };
+  const hip = V(0, P.seatY + 0.12, zc + P.seatZ * L);
+  const dir = V(0, Math.cos(P.lean), Math.sin(P.lean));
+  const neck = hip.clone().addScaledVector(dir, 0.56);
+  limb(hip, neck, 0.17, riderMats.suit);
+  const helmetMat = new THREE.MeshPhysicalMaterial({ color, metalness: 0.3, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.05 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), helmetMat);
+  head.position.copy(neck).addScaledVector(dir, 0.17); head.position.z += 0.03; g.add(head);
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.162, 14, 8, -0.9, 1.8, 1.05, 0.75), riderMats.visor);
+  visor.position.copy(head.position); g.add(visor);
+  for (const sx of [-1, 1]) {
+    const sh = neck.clone().add(V(sx * 0.2, -0.05, 0));
+    const grip = V(sx * 0.32, P.barY, zc + P.barZ * L);
+    const elbow = sh.clone().lerp(grip, 0.5).add(V(sx * 0.07, -0.08, -0.02));
+    limb(sh, elbow, 0.06, riderMats.suit); limb(elbow, grip, 0.05, riderMats.suit);
+    const h = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), riderMats.boot); h.position.copy(grip); g.add(h);
+    const hp = hip.clone().add(V(sx * 0.12, 0, 0));
+    const foot = V(sx * (ride === 'scooter' ? 0.16 : 0.2), P.footY, zc + P.footZ * L);
+    const knee = V(sx * 0.2, P.seatY + 0.08, zc + (P.seatZ + P.knee) * L);
+    limb(hp, knee, 0.085, riderMats.suit); limb(knee, foot, 0.065, riderMats.suit);
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.26), riderMats.boot); boot.position.copy(foot).add(V(0, 0, 0.06)); g.add(boot);
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  g.userData.helmet = helmetMat;
+  parent.add(g);
+  return g;
+}
+
+// One merged, vertex-coloured rider mesh for instanced traffic (white helmet takes the instance colour).
+export function riderGeometry(d, ride) {
+  const holder = new THREE.Group();
+  const g = buildRider(holder, d, ride, 0xffffff);
+  holder.updateMatrixWorld(true);
+  const geos = [];
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    const geo = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(o.matrixWorld);
+    const c = o.material === g.userData.helmet ? new THREE.Color(1, 1, 1) : o.material.color.clone().multiplyScalar(o.material === riderMats.suit ? 1.6 : 1);
+    const col = new Float32Array(geo.attributes.position.count * 3);
+    for (let i = 0; i < col.length; i += 3) { col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b; }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'color'].includes(k)) geo.deleteAttribute(k);
+    geos.push(geo);
+  });
+  g.userData.helmet.dispose();
+  return mergeGeometries(geos);
+}
+
 export class CarVisual {
   constructor(carId, color, { police = false, name = null, beam = true } = {}) {
-    const id = CARS[carId] ? carId : 'ferrari';
+    const id = protos[carId] ? carId : protos[CAR_IDS[0]] ? CAR_IDS[0] : 'ferrari';
     const cfg = CARS[id], proto = protos[id];
     this.carId = id;
     this.root = new THREE.Group();
@@ -175,7 +334,7 @@ export class CarVisual {
       const radius = Math.max(0.25, (box.max.y - box.min.y) / 2);
       const axle = _x.clone().applyQuaternion(w.getWorldQuaternion(new THREE.Quaternion()));
       const entry = { obj: w, base: w.quaternion.clone(), sign: Math.sign(axle.x) || 1, radius };
-      if (i < 2) {
+      if (i < (cfg.kind === 'bike' ? 1 : 2)) {
         const parent = w.parent;
         const pivot = new THREE.Group();
         pivot.position.copy(w.position);
@@ -189,13 +348,16 @@ export class CarVisual {
     });
     this.spin = 0;
 
-    const ao = new THREE.Mesh(new THREE.PlaneGeometry(d.w * 1.16, d.l * 1.15),
+    this.bike = cfg.kind === 'bike';
+    this.model = model;
+    if (this.bike) this.rider = buildRider(model, d, cfg.ride, color);
+    const ao = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(d.w, this.bike ? 0.9 : 0) * 1.16, d.l * 1.15),
       new THREE.MeshBasicMaterial({ map: aoTex, blending: THREE.MultiplyBlending, toneMapped: false, transparent: true, depthWrite: false }));
     ao.rotation.x = -Math.PI / 2; ao.position.set(0, 0.015, (d.minZ + d.maxZ) / 2); ao.renderOrder = 2;
     this.root.add(ao);
 
     this.flames = new THREE.Group();
-    for (const sx of [-0.17, 0.17]) {
+    for (const sx of this.bike ? [0] : [-0.17, 0.17]) {
       const o = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.8, 10, 1, true), flameOuter);
       o.rotation.x = -Math.PI / 2; o.position.set(sx, 0.4, d.minZ - 0.4);
       const i = new THREE.Mesh(new THREE.ConeGeometry(0.065, 0.5, 8, 1, true), flameInner);
@@ -224,13 +386,15 @@ export class CarVisual {
       this.root.add(bar);
     }
     this.lightsOn = true;
-    if (name) { this.tag = nameTag(name, color); this.tag.position.y = d.h + 1.35; this.root.add(this.tag); }
+    if (name) { this.tag = nameTag(name, color); this.tag.position.y = d.h + (this.bike ? 1.9 : 1.35); this.root.add(this.tag); }
   }
 
   // s: {x,z,yaw,fwd,steer,braking,nitro}
   update(dt, s, t) {
     this.root.position.set(s.x, (s.y || 0) + 0.02, s.z);
-    this.root.rotation.set(-(s.pitch || 0), s.yaw, 0, 'YXZ');
+    // bikes lean into turns (from physics, or estimated from steering for remote players)
+    const lean = this.bike ? (s.lean ?? Math.max(-0.7, Math.min(0.7, -(s.steer || 0) * Math.min(1, Math.abs(s.fwd || 0) / 18) * 0.7))) : 0;
+    this.root.rotation.set(-(s.pitch || 0), s.yaw, lean, 'YXZ');
     this.spin += (s.fwd ?? 0) * dt;
     const steer = -(s.steer || 0) * 0.5;
     for (const w of this.wheels) {
@@ -248,9 +412,15 @@ export class CarVisual {
     }
   }
 
+  setColor(c) {
+    this.bodyMat.color.set(c);
+    this.rider?.userData.helmet.color.set(c);
+  }
+
   dispose() {
     this.root.removeFromParent();
     this.bodyMat.dispose(); this.brakeMat.dispose();
+    if (this.rider) { this.rider.traverse((o) => { o.geometry?.dispose(); }); this.rider.userData.helmet.dispose(); }
     if (this.tag) { this.tag.material.map.dispose(); this.tag.material.dispose(); }
   }
 }

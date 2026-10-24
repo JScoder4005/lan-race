@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, HW } from './track.js';
-import { gltfLoader, normalizeVehicle } from './cars.js';
+import { gltfLoader, normalizeVehicle, autoWheels, riderGeometry, MAT } from './cars.js';
 import { collide } from './physics.js';
 import { FONTS } from './themes.js';
 
@@ -28,8 +28,12 @@ const CLASS = {
   car: { v: 17, vr: 0.22, a: 1.8, b: 3.0, T: 1.3, s0: 2.0, alat: 3.2, g: 1.5, lc: 1.0, wob: 0.03 },
   heavy: { v: 13, vr: 0.1, a: 0.7, b: 2.0, T: 1.7, s0: 3.0, alat: 1.6, g: 14, lc: 0.7, wob: 0.02 },
 };
-const classOf = (type) => (type === 'scooter' || type === 'bike' ? 'tw' : type === 'auto' ? 'auto'
-  : /^(bus|lorry|garbage-truck|firetruck)/.test(type) ? 'heavy' : 'car');
+const classOf = (type) => {
+  const t = type.replace('real:', '');
+  return t === 'scooter' || t === 'bike' || REAL[t]?.ride ? 'tw' : t === 'auto' ? 'auto'
+    : /^(bus|lorry|garbage-truck|firetruck|viking|citybus|keralabus|tata)/.test(t) ? 'heavy' : 'car';
+};
+const isBusType = (type) => /bus|viking/.test(type);
 // On-road vehicle mix per route (shares of vehicles) and vehicles per km per direction, from classified counts where
 // published: Bengaluru intersection counts (>70% 2W, 15% car, 4% auto), Chennai arterial (58/26/12/4), Kochi mobility plan
 // 2024 (~60% 2W, ~27% car) + RITES MG Road (14% auto, 11% bus), Hyderabad (50/16/16 auto/5 bus, 9% cycles folded into 2W),
@@ -125,10 +129,57 @@ function bake(gltf) {
   return { geo: mergeGeometries(geos), mat, dims, head: l.head, tail: l.tail };
 }
 
+// Real Indian traffic (Sketchfab CC models, scripts/fetch-vehicles.py): length (m) to scale to, mass (kg), rider pose.
+const REAL = {
+  swift: { len: 3.86, mass: 920 }, dzire: { len: 3.995, mass: 960 }, baleno: { len: 3.99, mass: 935 }, city: { len: 4.58, mass: 1110 },
+  creta: { len: 4.33, mass: 1350 }, scorpio: { len: 4.46, mass: 1900 }, innova: { len: 4.75, mass: 1750 }, wagonr: { len: 3.66, mass: 850 },
+  bolero: { len: 3.995, mass: 1600 },
+  activa: { len: 1.83, mass: 180, ride: 'scooter' }, scooter125: { len: 1.87, mass: 180, ride: 'scooter' }, olaev: { len: 1.86, mass: 190, ride: 'scooter' },
+  deliveryev: { len: 1.8, mass: 200, ride: 'scooter' }, pulsar: { len: 2.06, mass: 220, ride: 'naked' }, apache: { len: 2.08, mass: 215, ride: 'naked' },
+  classic350: { len: 2.15, mass: 270, ride: 'cruiser' },
+  auto: { len: 2.63, mass: 450 }, viking: { len: 11.0, mass: 12000 }, citybus: { len: 11.0, mass: 12000 }, keralabus: { len: 11.0, mass: 12000, ownLivery: true },
+  tatatruck: { len: 7.5, mass: 10000 }, tatalorry: { len: 7.4, mass: 10000 },
+};
+// Shares of new sales (FY25-26, SIAM data) decide which real models appear.
+const CAR_SHARE = { dzire: 4.9, swift: 4.0, wagonr: 3.9, baleno: 3.7, creta: 4.4, scorpio: 3.9, innova: 4.3, city: 1.6, bolero: 2.5 };
+const TW_SHARE = { activa: 30, scooter125: 16, pulsar: 22, apache: 12, classic350: 7, olaev: 7, deliveryev: 6 };
+// Indian car colour popularity: white dominates, then silver/grey.
+const CAR_COLOURS = [[0xf2f2f0, 40], [0xb9bcc2, 18], [0x5d6168, 10], [0x9a1b1b, 8], [0x1d3a6e, 8], [0x16171a, 8], [0x6b4a32, 4], [0xd8c9a8, 4]];
+const riderMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
+
+function bakeReal(gltf, cfg) {
+  const wheels = autoWheels(gltf.scene, { kind: cfg.ride ? 'bike' : 'car' });
+  const { norm, dims } = normalizeVehicle(gltf.scene, wheels || [], 1, cfg.len);
+  norm.updateMatrixWorld(true);
+  const groups = new Map();
+  norm.traverse((o) => {
+    if (!o.isMesh) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    g.applyMatrix4(o.matrixWorld);
+    if (!g.attributes.normal) g.computeVertexNormals();
+    if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    g.morphAttributes = {};
+    if (!groups.has(m.uuid)) groups.set(m.uuid, { mat: m, geos: [] });
+    groups.get(m.uuid).geos.push(g);
+  });
+  const parts = [...groups.values()].map(({ mat, geos }) => ({ geo: mergeGeometries(geos), mat, paint: MAT.paint.test(mat.name || '') && !MAT.skip.test(mat.name || '') }));
+  if (cfg.ride) parts.push({ geo: riderGeometry(dims, cfg.ride), mat: riderMat, paint: true });
+  const l = lightsGeo(dims);
+  return { parts, dims, head: l.head, tail: l.tail, real: true, mass: cfg.mass };
+}
+
 export async function loadTrafficModels() {
   const loader = gltfLoader();
   const out = {};
-  await Promise.all(KENNEY.map(async (t) => { out[t] = bake(await loader.loadAsync(`models/kenney/${t}.glb`)); }));
+  const have = await fetch('models/traffic/credits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  await Promise.all([
+    ...KENNEY.map(async (t) => { out[t] = bake(await loader.loadAsync(`models/kenney/${t}.glb`)); }),
+    ...Object.keys(REAL).filter((id) => have[id]).map(async (id) => {
+      try { out['real:' + id] = bakeReal(await loader.loadAsync(`models/traffic/${id}.glb`), REAL[id]); } catch (e) { console.warn('traffic model', id, e); }
+    }),
+  ]);
   return out;
 }
 
@@ -293,16 +344,25 @@ export class Traffic {
       const mix = MIX[mapId] || MIX.bengaluru;
       const pickW = (w) => { const ks = Object.keys(w).filter((k) => w[k] > 0); let x = r() * ks.reduce((a, k) => a + w[k], 0); for (const k of ks) { x -= w[k]; if (x <= 0) return k; } return ks[0]; };
       const carKinds = { sedan: weights.sedan ?? 4, suv: weights.suv ?? 2, hatch: weights.hatch ?? 3, van: weights.van ?? 1, delivery: weights.delivery ?? 0.5 };
+      const realOf = (share) => Object.fromEntries(Object.entries(share).filter(([id]) => all['real:' + id]).map(([id, w]) => ['real:' + id, w]));
+      const realCars = realOf(CAR_SHARE), realTw = realOf(mapId === 'wayanad' ? { ...TW_SHARE, deliveryev: 0 } : TW_SHARE);
+      // Malabar (Kannur, Wayanad) runs mostly private stage buses; elsewhere state transport (KSRTC/BMTC/MTC/TGSRTC).
+      const busPool = { kannur: ['keralabus', 'keralabus', 'keralabus', 'viking'], wayanad: ['keralabus', 'keralabus', 'viking'] }[mapId]
+        || (T.lang === 'ml' ? ['viking', 'viking', 'viking', 'keralabus'] : ['viking', 'citybus']);
+      const realBus = busPool.filter((id) => all['real:' + id]).map((id) => 'real:' + id);
+      const realTruck = ['tatatruck', 'tatalorry'].filter((id) => all['real:' + id]).map((id) => 'real:' + id);
+      const has = (o) => Object.keys(o).length > 0;
       for (const dir of [1, -1]) {
         const lanes = { tw: [], between: [], slow: [], fast: [] };
         const total = Math.round((L / 1000) * mix.density);
         for (let i = 0; i < total; i++) {
-          const cls = pickW({ tw: mix.tw, car: mix.car, auto: mix.auto, bus: busTypes.length ? mix.bus : 0, truck: mix.truck });
+          const cls = pickW({ tw: mix.tw, car: mix.car, auto: mix.auto, bus: busTypes.length || realBus.length ? mix.bus : 0, truck: mix.truck });
           let type, lane;
-          if (cls === 'tw') { type = r() < 0.55 ? 'bike' : 'scooter'; const q = r(); lane = q < 0.6 || !four ? 'tw' : q < 0.85 ? 'between' : 'fast'; }
-          else if (cls === 'auto') { type = 'auto'; lane = 'slow'; }
-          else if (cls === 'bus') { type = busTypes[Math.floor(r() * busTypes.length)]; lane = 'slow'; }
-          else if (cls === 'truck') { type = r() < 0.75 ? 'lorry' : 'truck'; lane = 'slow'; }
+          if (cls === 'tw') { type = has(realTw) ? pickW(realTw) : r() < 0.55 ? 'bike' : 'scooter'; const q = r(); lane = q < 0.6 || !four ? 'tw' : q < 0.85 ? 'between' : 'fast'; }
+          else if (cls === 'auto') { type = all['real:auto'] ? 'real:auto' : 'auto'; lane = 'slow'; }
+          else if (cls === 'bus') { type = realBus.length ? realBus[Math.floor(r() * realBus.length)] : busTypes[Math.floor(r() * busTypes.length)]; lane = 'slow'; }
+          else if (cls === 'truck') { type = realTruck.length ? realTruck[Math.floor(r() * realTruck.length)] : r() < 0.75 ? 'lorry' : 'truck'; lane = 'slow'; }
+          else if (has(realCars)) { type = pickW(realCars); lane = r() < 0.65 ? 'fast' : 'slow'; }
           else { const k = pickW(carKinds); const opts = KIND_MODELS[k]; type = opts[Math.floor(r() * opts.length)]; lane = r() < 0.65 ? 'fast' : 'slow'; }
           if (!all[type]) continue;
           lanes[lane].push(type);
@@ -319,48 +379,64 @@ export class Traffic {
     const tailMat = new THREE.MeshBasicMaterial({ vertexColors: true });
     const extraMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
     this.meshes = [];
-    const col = new THREE.Color();
+    this.types = [];
+    const busCols = (CITY_BUSES[mapId] || ['bmtc']).filter((id) => id !== 'private').map((id) => LIVERY[id].bottom);
+    const pickCol = (list) => { let x = r() * list.reduce((a, q) => a + q[1], 0); for (const [c, w] of list) { x -= w; if (x <= 0) return c; } return list[0][0]; };
     let total = 0;
     for (const type in byType) {
       const list = byType[type], m = all[type], n = list.length;
-      let mat = m.mat;
-      if (m.tint === undefined) { // Kenney cars: glossy clear-coated paint, varied colours
-        mat = new THREE.MeshPhysicalMaterial({ map: m.mat.map, roughness: 0.35, metalness: 0.4, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.1 });
-      }
-      const mk = (geo, material) => {
+      // Only vehicles near the camera are drawn: instance slots are refilled every frame (see update).
+      const mk = (geo, material, tinted) => {
         const im = new THREE.InstancedMesh(geo, material, n);
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        im.frustumCulled = false;
+        im.frustumCulled = false; im.count = 0;
+        if (tinted) im.setColorAt(0, new THREE.Color(1, 1, 1));
         scene.add(im); this.meshes.push(im);
         return im;
       };
-      const meshes = { body: mk(m.geo, mat), head: mk(m.head, headMat), tail: mk(m.tail, tailMat) };
-      if (m.extra) meshes.extra = mk(m.extra, extraMat);
+      const ty = { meshes: [], tinted: [], tail: null, n: 0 };
+      if (m.real) {
+        const own = REAL[type.slice(5)]?.ownLivery;
+        for (const part of m.parts) { const tint = part.paint && !own; const im = mk(part.geo, part.mat, tint); ty.meshes.push(im); if (tint) ty.tinted.push(im); }
+      } else {
+        let mat = m.mat;
+        if (m.tint === undefined) { // Kenney cars: glossy clear-coated paint, varied colours
+          mat = new THREE.MeshPhysicalMaterial({ map: m.mat.map, roughness: 0.35, metalness: 0.4, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.1 });
+        }
+        const body = mk(m.geo, mat, m.tint !== null);
+        ty.meshes.push(body); if (m.tint !== null) ty.tinted.push(body);
+        if (m.extra) ty.meshes.push(mk(m.extra, extraMat));
+      }
+      ty.meshes.push(mk(m.head, headMat));
+      ty.tail = mk(m.tail, tailMat, true); ty.meshes.push(ty.tail);
+      this.types.push(ty);
+      const isBus = isBusType(type), isTw = m.real ? !!REAL[type.slice(5)]?.ride : m.tint === true;
       list.forEach((p, i) => {
-        if (m.tint === undefined) meshes.body.setColorAt(i, col.set(PAINT[Math.floor(r() * PAINT.length)]).lerp(new THREE.Color(1, 1, 1), 0.35));
-        else if (m.tint) meshes.body.setColorAt(i, col.set(m.palette[Math.floor(r() * m.palette.length)]));
-        else if (m.tint === false) meshes.body.setColorAt(i, col.setRGB(1, 1, 1));
-        meshes.tail.setColorAt(i, col.setRGB(1, 1, 1));
+        const col = new THREE.Color();
+        if (m.real) col.set(isBus ? busCols[Math.floor(r() * busCols.length)] : isTw ? RIDER[Math.floor(r() * RIDER.length)] : pickCol(CAR_COLOURS));
+        else if (m.tint === undefined) col.set(pickCol(CAR_COLOURS)).lerp(new THREE.Color(1, 1, 1), 0.2);
+        else if (m.tint) col.set(m.palette[Math.floor(r() * m.palette.length)]);
+        else col.setRGB(1, 1, 1);
         const dims = m.dims;
         this.cars.push({
-          ...p, meshes, idx: i, gi: total + i, half: dims.l / 2, r: Math.min(1.3, (dims.w / 2) * 0.95), mass: MASS[m.massKey || type] || 1500,
-          x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0, yawRate: 0, on: true, ph: r() * 6.28, ph2: r() * 6.28, knocked: null, w: dims.w,
+          ...p, ty, col, gi: total + i, half: dims.l / 2, r: Math.min(1.3, (dims.w / 2) * 0.95), mass: m.mass || MASS[m.massKey || type] || 1500,
+          x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0, yawRate: 0, on: true, ph: r() * 6.28, ph2: r() * 6.28, knocked: null, w: Math.max(dims.w, isTw ? 0.7 : 0),
         });
       });
       total += n;
-      for (const k in meshes) if (meshes[k].instanceColor) meshes[k].instanceColor.needsUpdate = true;
     }
     this.cars.sort((a, b) => a.gi - b.gi);
     this.initSim(track, scene, busTypes.length > 0 && !!T.traffic && !track.closed && HW >= 8); // no stops on narrow ghats
     // headlight beams on the road
     this.beams = new THREE.InstancedMesh(new THREE.PlaneGeometry(4, 16).rotateX(-Math.PI / 2).translate(0, 0.06, 10),
       new THREE.MeshBasicMaterial({ map: beamTexture(), color: 0xfff1d8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }), this.cars.length);
-    this.beams.frustumCulled = false;
+    this.beams.frustumCulled = false; this.beams.count = 0;
     scene.add(this.beams); this.meshes.push(this.beams);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._p = new THREE.Vector3(); this._e = new THREE.Euler(0, 0, 0, 'YXZ');
     this._s = new THREE.Vector3(1, 1, 1); this._z = new THREE.Vector3(0, 0, 0);
     this._tmp = {}; this._c = new THREE.Color();
     this.onKnock = null;
+    this.drawDist = 520;
   }
 
   // ---------- driving sim ----------
@@ -412,7 +488,7 @@ export class Traffic {
       const rr = mulberry(c.gi * 7919 + 31);
       c.K = K; c.cls = classOf(c.type);
       c.vDes = (c.vDes || K.v) * (1 - K.vr + 2 * K.vr * rr());
-      c.bus = /^bus/.test(c.type);
+      c.bus = isBusType(c.type);
       (this.groups[c.dir > 0 ? 0 : 1] ||= []).push(c);
     }
     this.ts = undefined;
@@ -593,6 +669,9 @@ export class Traffic {
     while (this.ts < t && guard++ < 40000) this.step();
     const alpha = Math.max(0, Math.min(1, 1 - (this.ts - t) / DT));
     const s = this._tmp, L = this.track.length, E = this._e, col = this._c, Lq = this.Lq;
+    const R2 = this.drawDist * this.drawDist;
+    let nBeam = 0;
+    for (const ty of this.types) ty.n = 0;
     for (const c of this.cars) {
       let pitch = 0, roll = 0, brake = 1;
       if (c.knocked) {
@@ -633,14 +712,22 @@ export class Traffic {
         if (c.cls === 'tw') roll = Math.max(-0.35, Math.min(0.35, -steer * 2.5));
         if (!c.on) { c.x = c.z = 1e6; }
       }
+      if (!c.on) continue;
+      const dx = c.x - camX, dz = c.z - camZ;
+      if (dx * dx + dz * dz > R2) continue;
       E.set(pitch, c.yaw, roll);
       this._q.setFromEuler(E);
       this._p.set(c.x, c.y + 0.02, c.z);
-      this._m.compose(this._p, this._q, c.on ? this._s : this._z);
-      for (const key in c.meshes) c.meshes[key].setMatrixAt(c.idx, this._m);
-      c.meshes.tail.setColorAt(c.idx, col.setRGB(brake, brake, brake));
-      this.beams.setMatrixAt(c.gi, c.knocked ? this._m.compose(this._p, this._q, this._z) : this._m);
+      this._m.compose(this._p, this._q, this._s);
+      const ty = c.ty, slot = ty.n++;
+      for (const im of ty.meshes) im.setMatrixAt(slot, this._m);
+      for (const im of ty.tinted) im.setColorAt(slot, c.col);
+      ty.tail.setColorAt(slot, col.setRGB(brake, brake, brake));
+      if (!c.knocked) this.beams.setMatrixAt(nBeam++, this._m);
     }
-    for (const m of this.meshes) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+    for (const ty of this.types) for (const im of ty.meshes) {
+      im.count = ty.n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    }
+    this.beams.count = nBeam; this.beams.instanceMatrix.needsUpdate = true;
   }
 }

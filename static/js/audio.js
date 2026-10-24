@@ -81,8 +81,8 @@ export class Audio {
     const rpmN = Math.max(0, Math.min(1, (car.rpm - 900) / 7500));
     if (this.ready) {
       const idleW = active ? Math.max(0, 1 - (car.rpm - 900) / 1300) : 0;
-      this.eng.src?.playbackRate.setTargetAtTime(0.75 + rpmN * 2.5, t, 0.03);
-      this.idle.src?.playbackRate.setTargetAtTime(0.95 + rpmN * 0.6, t, 0.03);
+      this.eng.src?.playbackRate.setTargetAtTime((0.75 + rpmN * 2.5) * (car.voice || 1), t, 0.03);
+      this.idle.src?.playbackRate.setTargetAtTime((0.95 + rpmN * 0.6) * (car.voice || 1), t, 0.03);
       this.eng.g.gain.setTargetAtTime(active ? (0.32 + thr * 0.35) * (1 - idleW * 0.75) : 0, t, k);
       this.idle.g.gain.setTargetAtTime(idleW * 0.45, t, k);
       this.engFilter.frequency.setTargetAtTime(1200 + thr * 5000 + rpmN * 3000, t, k);
