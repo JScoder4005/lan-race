@@ -398,11 +398,26 @@ func main() {
 	}))
 	http.HandleFunc("/ws", h.serveWS)
 
-	_, port, _ := net.SplitHostPort(*addr)
+	host, port, _ := net.SplitHostPort(*addr)
 	fmt.Println("NEON HARBOR — LAN racing server")
 	fmt.Printf("  this machine:  http://localhost:%s\n", port)
-	for _, ip := range lanIPs() {
-		fmt.Printf("  LAN players:   http://%s:%s\n", ip, port)
+	if host != "" { // explicit address: listen exactly there
+		log.Fatal(http.ListenAndServe(*addr, nil))
 	}
-	log.Fatal(http.ListenAndServe(*addr, nil))
+	// Default: only localhost and the physical LAN cards, never VPN/WireGuard/Tailscale/Docker interfaces.
+	errs := make(chan error)
+	for _, ip := range append([]string{"127.0.0.1", "::1"}, lanIPs()...) {
+		ln, err := net.Listen("tcp", net.JoinHostPort(ip, port))
+		if err != nil {
+			if ip == "::1" {
+				continue // no IPv6 loopback
+			}
+			log.Fatal(err)
+		}
+		if ip != "127.0.0.1" && ip != "::1" {
+			fmt.Printf("  LAN players:   http://%s:%s\n", ip, port)
+		}
+		go func() { errs <- http.Serve(ln, nil) }()
+	}
+	log.Fatal(<-errs)
 }
