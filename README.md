@@ -8,6 +8,8 @@ A multiplayer browser racing game for local networks. A small Go server hosts th
 go build -o lan-racer . && ./lan-racer
 ```
 
+Or use `./start.sh` (builds if needed, starts the server in the background and opens the game) and `./stop.sh` to shut it down.
+
 Open `http://localhost:8080` on the host machine; other players use one of the LAN addresses the server prints. All assets are bundled, so no internet connection is needed.
 
 ## Maps

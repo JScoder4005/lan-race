@@ -1,2 +1,4 @@
 lan-racer
 __pycache__/
+lan-racer.log
+.lan-racer.pid
