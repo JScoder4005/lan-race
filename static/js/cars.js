@@ -40,7 +40,7 @@ export const CARS = {
   rx100: veh('rx100', 'YAMAHA RX100', 'CLASSIC 2-STROKE', { kind: 'bike', ride: 'naked', top: 100, tAcc: 7.5, vAcc: 60, mass: 103, len: 1.93, voice: 1.55 }),
   jupiter: veh('jupiter', 'TVS JUPITER', 'SCOOTER', { kind: 'bike', ride: 'scooter', top: 82, tAcc: 9.0, vAcc: 60, mass: 109, len: 1.85, voice: 1.25 }),
   policejeep: veh('policejeep', 'POLICE JEEP', 'POLICE', { top: 140, tAcc: 14, mass: 1700, len: 4.1, hidden: true }),
-  ninja: veh('ninja', 'KAWASAKI NINJA 300', 'SPORT', { kind: 'bike', ride: 'sport', top: 180, tAcc: 6.5, mass: 179, len: 2.02, grip: 1.1, voice: 1.5 }),
+  ninja: veh('ninja', 'KAWASAKI NINJA 300', 'SPORT', { kind: 'bike', ride: 'sport', top: 180, tAcc: 6.5, mass: 179, len: 2.02, grip: 1.1, voice: 1.5, yaw: 180 }),
   ferrari: {
     name: 'FERRARI 458 SPIDER', url: 'models/ferrari.glb', power: 1.0, grip: 1.0, mass: 1500, legacy: true,
     stats: { speed: 0.78, accel: 0.8, handling: 0.88 },
