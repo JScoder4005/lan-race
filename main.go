@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -359,12 +360,19 @@ func validID(s string) bool {
 	return true
 }
 
+// WireGuard tunnels can have any name; the kernel reports their type in sysfs.
+func isWireGuard(name string) bool {
+	b, err := os.ReadFile("/sys/class/net/" + name + "/uevent")
+	return err == nil && strings.Contains(string(b), "DEVTYPE=wireguard")
+}
+
 func lanIPs() []string {
 	var out []string
 	ifaces, _ := net.Interfaces()
 	for _, i := range ifaces {
 		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 || strings.HasPrefix(i.Name, "docker") ||
-			strings.HasPrefix(i.Name, "br-") || strings.HasPrefix(i.Name, "veth") || strings.HasPrefix(i.Name, "virbr") {
+			strings.HasPrefix(i.Name, "br-") || strings.HasPrefix(i.Name, "veth") || strings.HasPrefix(i.Name, "virbr") ||
+			strings.HasPrefix(i.Name, "pvpn") || isWireGuard(i.Name) {
 			continue
 		}
 		addrs, _ := i.Addrs()
