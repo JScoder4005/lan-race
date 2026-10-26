@@ -218,6 +218,12 @@ export async function loadCarModels(onProgress) {
       const gltf = await loader.loadAsync(cfg.url, (e) => {
         if (e.total) { progress[id] = e.loaded / e.total; onProgress?.(all.reduce((s, k) => s + (progress[k] || 0), 0) / all.length); }
       });
+      // Hide any kickstand/sidestand so bikes don't ride with the stand down.
+      if (cfg.kind === 'bike') {
+        const strays = [];
+        gltf.scene.traverse((o) => { if (o !== gltf.scene && /kickstand|sidestand|side[_-]?stand/i.test(o.name)) strays.push(o); });
+        for (const o of strays) o.removeFromParent();
+      }
       if (cfg.auto) {
         const wheels = autoWheels(gltf.scene, cfg);
         cfg.wheelObjs = wheels || [];
@@ -423,7 +429,7 @@ export class CarVisual {
   update(dt, s, t) {
     this.root.position.set(s.x, (s.y || 0) + 0.02, s.z);
     // bikes lean into turns (from physics, or estimated from steering for remote players)
-    const lean = this.bike ? (s.lean ?? Math.max(-0.7, Math.min(0.7, -(s.steer || 0) * Math.min(1, Math.abs(s.fwd || 0) / 18) * 0.7))) : 0;
+    const lean = this.bike ? -(s.lean ?? Math.max(-0.7, Math.min(0.7, -(s.steer || 0) * Math.min(1, Math.abs(s.fwd || 0) / 18) * 0.7))) : 0;
     this.root.rotation.set(-(s.pitch || 0), s.yaw, lean, 'YXZ');
     this.spin += (s.fwd ?? 0) * dt;
     const steer = -(s.steer || 0) * 0.5;
