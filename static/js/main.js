@@ -729,6 +729,7 @@ function finishPilot(dt) {
 // ---------- keys ----------
 function handleKeys() {
   if (input.pressed('KeyM')) { audio.setMuted(!audio.muted); hud.popup(audio.muted ? 'MUTED' : 'SOUND ON', '#8a93a6'); }
+  if (input.pressed('KeyH')) audio.honk();
   if (input.pressed('KeyK')) { rain.visible = !rain.visible; props.setWet(rain.visible); hud.popup(rain.visible ? 'RAIN' : 'CLEAR SKIES', '#39e6ff'); }
   if (input.pressed('KeyG')) { G.mw = !G.mw; hud.popup(G.mw ? '"MOST WANTED" FILTER' : 'NEON NIGHT', '#ffb400'); }
   if (G.phase !== 'race' && G.phase !== 'results') return;
@@ -768,7 +769,9 @@ function frame() {
     if (audio.ctx && musicOn && !music.on) music.start();
     renderLyrics();
   }
-  myVis.update(dt, { x: me.x, z: me.z, y: me.y, pitch: me.pitch, yaw: me.yaw, fwd: me.fwd, steer: me.steer, lean: me.bike ? me.lean : undefined, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
+  const wheelieT = me.bike && inp.wheelie && me.throttle > 0.3 && me.fwd > 2 && me.fwd < 85 ? 0.55 : 0;
+  me.wheelie = (me.wheelie || 0) + (wheelieT - (me.wheelie || 0)) * Math.min(1, dt * 3.5);
+  myVis.update(dt, { x: me.x, z: me.z, y: me.y, pitch: me.pitch, yaw: me.yaw, fwd: me.fwd, steer: me.steer, lean: me.bike ? me.lean : undefined, wheelie: me.wheelie, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
   myVis.tag.visible = false;
   updateRemotes(dt, st, t);
 
