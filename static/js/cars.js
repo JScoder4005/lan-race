@@ -204,40 +204,42 @@ export function autoWheels(scene, cfg) {
   return tops;
 }
 
-export async function loadCarModels(onProgress) {
-  const loader = gltfLoader();
-  const progress = {};
+// Vehicles load on demand: at boot only the player's car and the police car, others when someone picks them.
+const loading = {};
+let loader = null;
+export const carLoaded = (id) => !!protos[id];
+export function ensureCar(id, onProgress) {
+  return (loading[id] ||= (async () => {
+    const cfg = CARS[id];
+    const gltf = await (loader ||= gltfLoader()).loadAsync(cfg.url, (e) => { if (e.total) onProgress?.(e.loaded / e.total); });
+    // Hide any kickstand/sidestand so bikes don't ride with the stand down.
+    if (cfg.kind === 'bike') {
+      const strays = [];
+      gltf.scene.traverse((o) => { if (o !== gltf.scene && /kickstand|sidestand|side[_-]?stand/i.test(o.name)) strays.push(o); });
+      for (const o of strays) o.removeFromParent();
+    }
+    if (cfg.auto) {
+      const wheels = autoWheels(gltf.scene, cfg);
+      cfg.wheelObjs = wheels || [];
+      cfg.wheels = (wheels || []).map((o) => o.name);
+      protos[id] = normalizeVehicle(gltf.scene, cfg.wheelObjs, 1, cfg.len, cfg.yaw || 0);
+    } else protos[id] = normalizeVehicle(gltf.scene, cfg.wheels);
+    bakeCar(protos[id].norm, cfg);
+    return id;
+  })());
+}
+
+export async function loadCarModels(onProgress, want = []) {
   // downloaded vehicles are listed in their credits manifest (scripts/fetch-vehicles.py)
   const have = await fetch('models/vehicles/credits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
   VEHICLE_CREDITS = have;
-  const all = Object.keys(CARS).filter((id) => !CARS[id].auto || have[id]);
-  const ok = [];
-  await Promise.all(all.map(async (id) => {
-    const cfg = CARS[id];
-    try {
-      const gltf = await loader.loadAsync(cfg.url, (e) => {
-        if (e.total) { progress[id] = e.loaded / e.total; onProgress?.(all.reduce((s, k) => s + (progress[k] || 0), 0) / all.length); }
-      });
-      // Hide any kickstand/sidestand so bikes don't ride with the stand down.
-      if (cfg.kind === 'bike') {
-        const strays = [];
-        gltf.scene.traverse((o) => { if (o !== gltf.scene && /kickstand|sidestand|side[_-]?stand/i.test(o.name)) strays.push(o); });
-        for (const o of strays) o.removeFromParent();
-      }
-      if (cfg.auto) {
-        const wheels = autoWheels(gltf.scene, cfg);
-        cfg.wheelObjs = wheels || [];
-        cfg.wheels = (wheels || []).map((o) => o.name);
-        protos[id] = normalizeVehicle(gltf.scene, cfg.wheelObjs, 1, cfg.len, cfg.yaw || 0);
-        if (!wheels) console.warn(`${id}: wheels not found, no wheel animation`);
-      } else protos[id] = normalizeVehicle(gltf.scene, cfg.wheels);
-      bakeCar(protos[id].norm, cfg);
-      ok.push(id);
-    } catch (e) { if (!cfg.auto) throw e; /* vehicle not downloaded */ }
-  }));
-  const indian = Object.keys(CARS).filter((id) => CARS[id].auto && !CARS[id].hidden && ok.includes(id));
-  CAR_IDS = indian.length ? indian : Object.keys(CARS).filter((id) => CARS[id].legacy);
-  POLICE_CAR = ['policejeep', 'scorpio', 'ferrari'].find((id) => ok.includes(id)) || CAR_IDS[0];
+  const indian = Object.keys(CARS).filter((id) => CARS[id].auto && have[id]);
+  CAR_IDS = indian.filter((id) => !CARS[id].hidden);
+  if (!CAR_IDS.length) CAR_IDS = Object.keys(CARS).filter((id) => CARS[id].legacy);
+  POLICE_CAR = ['policejeep', 'scorpio'].find((id) => indian.includes(id)) || CAR_IDS[0];
+  const first = [...new Set([...want.filter((id) => CAR_IDS.includes(id)), CAR_IDS[0], POLICE_CAR])];
+  const prog = {};
+  await Promise.all(first.map((id) => ensureCar(id, (f) => { prog[id] = f; onProgress?.(first.reduce((a, k) => a + (prog[k] || 0), 0) / first.length); })));
   aoTex = await new THREE.TextureLoader().loadAsync('models/ferrari_ao.png');
   const c = document.createElement('canvas'); c.width = 64; c.height = 256;
   const x = c.getContext('2d');

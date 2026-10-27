@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Track, buildWorld, gridSlot, setRoadWidth } from './track.js';
 import { CarPhysics, collide, clamp, wrapAngle } from './physics.js';
-import { loadCarModels, CarVisual, CARS, CAR_IDS, POLICE_CAR, VEHICLE_CREDITS, vehicleOpts, vehicleMass } from './cars.js';
+import { loadCarModels, ensureCar, carLoaded, CarVisual, CARS, CAR_IDS, POLICE_CAR, VEHICLE_CREDITS, vehicleOpts, vehicleMass } from './cars.js';
 import { Traffic, loadTrafficModels } from './traffic.js';
 import { Particles, Skidmarks, Rain } from './fx.js';
 import { buildTokyo } from './tokyo.js';
@@ -15,6 +15,7 @@ import { addSky, applySky, buildEnvironment, createComposer, FOG_COLOR } from '.
 import { THEMES } from './themes.js';
 import { planLandmarks } from './landmarks.js';
 import { planPois, buildPois } from './pois.js';
+import { chunkStatic } from './chunk.js';
 import { buildIndia } from './india.js';
 
 const $ = (id) => document.getElementById(id);
@@ -156,6 +157,7 @@ function setCar(id) {
   $('stSpeed').style.width = c.stats.speed * 100 + '%';
   $('stAccel').style.width = c.stats.accel * 100 + '%';
   $('stHandling').style.width = c.stats.handling * 100 + '%';
+  if (!carLoaded(id)) { $('carSpec').textContent += ' · loading…'; ensureCar(id).then(() => { if (car === id) setCar(id); }); return; }
   if (myVis && myVis.carId !== car) { myVis.dispose(); myVis = new CarVisual(car, color, { name }); scene.add(myVis.root); }
 }
 const cycleCar = (d) => { setCar(CAR_IDS[(CAR_IDS.indexOf(car) + d + CAR_IDS.length) % CAR_IDS.length]); save(); sendHello(); };
@@ -318,7 +320,12 @@ function syncRemoteVisuals() {
     let r = remotes.get(p.id);
     if (r && (r.color !== p.color || r.name !== p.name || r.car !== p.car)) { r.vis?.dispose(); r.vis = null; }
     if (!r) { r = { cops: [], st: {} }; remotes.set(p.id, r); }
-    if (!r.vis) { r.vis = new CarVisual(p.car, p.color, { name: p.name }); r.color = p.color; r.name = p.name; r.car = p.car; scene.add(r.vis.root); }
+    if (!r.vis) {
+      // until their car has downloaded, show a stand-in and rebuild once it arrives
+      const ready = carLoaded(p.car) || !CARS[p.car];
+      if (!ready) ensureCar(p.car).then(syncRemoteVisuals);
+      r.vis = new CarVisual(p.car, p.color, { name: p.name }); r.color = p.color; r.name = p.name; r.car = ready ? p.car : null; scene.add(r.vis.root);
+    }
   }
 }
 
@@ -362,6 +369,7 @@ async function loadMap(id) {
   buildPois(city, track, T, poiPlans, world.groundY);
   traffic = new Traffic(city, track, trafficModels, T, id, world.groundY);
   traffic.drawDist = Q.traffic;
+  chunkStatic(city, new Set(traffic.meshes)); // route-long static meshes -> 400 m tiles the camera can cull
   traffic.onKnock = (gi, k, imp) => {
     net?.send({ t: 'knock', k: { gi, x: k.x, y: k.y, z: k.z, vx: k.vx, vy: k.vy, vz: k.vz, yaw: k.yaw, pitch: 0, roll: 0, wy: k.wy, wp: k.wp, wr: k.wr } });
     if (imp > 6) hud.popup(imp > 14 ? 'WRECKED!' : 'TAKEDOWN', '#ffb400');
@@ -859,7 +867,7 @@ function ordinal(n) { return n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] 
       try { const font = new FontFace(fam, `url(fonts/neon-${f}.woff)`); await font.load(); document.fonts.add(font); } catch { /* system font fallback */ }
     }));
     $('loadtext').textContent = 'Loading cars…';
-    const [, tm, idx] = await Promise.all([loadCarModels((p) => { $('loadbar').style.width = Math.round(p * 100) + '%'; }), loadTrafficModels(),
+    const [, tm, idx] = await Promise.all([loadCarModels((p) => { $('loadbar').style.width = Math.round(p * 100) + '%'; }, [car]), loadTrafficModels(),
       fetch('maps/index.json').then((r) => r.json())]);
     trafficModels = tm;
     // CC-BY attribution for downloaded vehicle models

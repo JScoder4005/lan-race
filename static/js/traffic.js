@@ -328,6 +328,15 @@ function indianModels(T, mapId) {
   return M;
 }
 
+// Soft dark blob for contact shadows under traffic (rounded rectangle, blurred edges).
+function shadowTexture() {
+  const [c, x] = canvas(64, 128);
+  x.filter = 'blur(9px)';
+  x.fillStyle = 'rgba(0,0,0,0.85)';
+  x.beginPath(); x.roundRect(12, 14, 40, 100, 16); x.fill();
+  return new THREE.CanvasTexture(c);
+}
+
 function beamTexture() {
   const [c, x] = canvas(64, 128);
   const g = x.createLinearGradient(0, 0, 0, 128);
@@ -458,6 +467,12 @@ export class Traffic {
       new THREE.MeshBasicMaterial({ map: beamTexture(), color: 0xfff1d8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }), this.cars.length);
     this.beams.frustumCulled = false; this.beams.count = 0;
     scene.add(this.beams); this.meshes.push(this.beams);
+    // contact shadows: one instanced draw for every visible vehicle, so traffic sits on the road instead of floating
+    this.shadows = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, opacity: 0.75, polygonOffset: true, polygonOffsetFactor: -2 }), this.cars.length);
+    this.shadows.frustumCulled = false; this.shadows.count = 0; this.shadows.renderOrder = 1;
+    scene.add(this.shadows); this.meshes.push(this.shadows);
+    this._ss = new THREE.Vector3(); this._sq = new THREE.Quaternion(); this._yAxis = new THREE.Vector3(0, 1, 0);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._p = new THREE.Vector3(); this._e = new THREE.Euler(0, 0, 0, 'YXZ');
     this._s = new THREE.Vector3(1, 1, 1); this._z = new THREE.Vector3(0, 0, 0);
     this._tmp = {}; this._c = new THREE.Color();
@@ -756,7 +771,12 @@ export class Traffic {
       const slot = ty.n++;
       this._m.toArray(ty.mat.array, slot * 16);
       c.col.toArray(ty.col.array, slot * 3);
-      if (!c.knocked) this.beams.setMatrixAt(nBeam++, this._m);
+      if (!c.knocked) {
+        this.beams.setMatrixAt(nBeam, this._m);
+        this._sq.setFromEuler(E.set(pitch, c.yaw, 0)); // follow the road grade
+        this._p.y = c.y + 0.04;
+        this.shadows.setMatrixAt(nBeam++, this._m.compose(this._p, this._sq, this._ss.set(c.w * 1.25 + 0.3, 1, c.half * 2.15)));
+      }
     }
     const upload = (a, n) => { if (n) { a.addUpdateRange(0, n * a.itemSize); a.needsUpdate = true; } };
     for (const ty of this.types) {
@@ -765,5 +785,6 @@ export class Traffic {
       upload(ty.mat, ty.n); upload(ty.col, ty.tinted.length ? ty.n : 0); upload(ty.lmat, ty.nl); upload(ty.lcol, ty.nl);
     }
     this.beams.count = nBeam; this.beams.visible = nBeam > 0; upload(this.beams.instanceMatrix, nBeam);
+    this.shadows.count = nBeam; this.shadows.visible = nBeam > 0; upload(this.shadows.instanceMatrix, nBeam);
   }
 }

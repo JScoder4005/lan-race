@@ -306,6 +306,7 @@ export function buildIndia(scene, track, world, T, plans) {
     for (let i = 0; i < 10; i++) { x.fillStyle = '#fff3cf'; x.fillRect(16 + i * 50, 24, 36, 44); }
     const coachMat = new THREE.MeshBasicMaterial({ map: tex(c), color: new THREE.Color(1.2, 1.2, 1.2) });
     const coaches = new THREE.InstancedMesh(new THREE.BoxGeometry(2.9, 3.6, 20), coachMat, 6);
+    coaches.userData.dynamic = true; // moved every frame: keep out of static chunking
     coaches.frustumCulled = false;
     scene.add(coaches);
     const mtx = new THREE.Matrix4(), qq = new THREE.Quaternion(), pv = new THREE.Vector3(), sv = new THREE.Vector3(1, 1, 1), yAxis = new THREE.Vector3(0, 1, 0), tmp = {};
