@@ -62,6 +62,7 @@ button.go:hover { filter: brightness(1.12); }
 #bounty { font: italic 900 30px "Arial Black"; color: #fff; margin-top: 4px; }
 #banked, #copCount { font: 700 15px Arial; color: #aeb7c9; margin-top: 4px; letter-spacing: 1px; }
 #minimap { position: absolute; right: 26px; top: 22px; width: 240px; height: 240px; }
+#stopbar { position: absolute; right: 26px; top: 270px; width: 240px; height: 75px; display: none; }
 #tach { position: absolute; right: 18px; bottom: 10px; width: 320px; height: 320px; }
 #pbar, #cool { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); display: none; align-items: center; gap: 12px; font: italic 900 16px "Arial Black"; }
 #pbar .track, #cool .track { width: 380px; height: 14px; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25); position: relative; }

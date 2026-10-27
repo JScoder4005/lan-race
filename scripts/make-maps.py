@@ -363,16 +363,96 @@ def refresh_pois(m, path):
     return d
 
 
+def find_stops(route, to_ll, lat0, lon0, kx, kz, spacing=700, limit=14):
+    """Named bus stops on the route (OSM), spaced out along it: the route's checkpoints."""
+    line = ','.join(f'{a:.5f},{b:.5f}' for a, b in (to_ll(x, z) for x, z in route[::15]))
+    body = ('[out:json][timeout:120];(' + f'node(around:35,{line})["highway"="bus_stop"]["name"];'
+            + f'node(around:35,{line})["public_transport"="platform"]["bus"="yes"]["name"];' + ');out;')
+    d = http_json('https://overpass-api.de/api/interpreter', data=urllib.parse.urlencode({'data': body}).encode())
+    cum = [0.0]
+    for i in range(1, len(route)): cum.append(cum[-1] + dist(route[i - 1], route[i]))
+    found = {}
+    for e in d['elements']:
+        t = e.get('tags', {})
+        name = (t.get('name:en') or t['name']).strip()
+        if name == name.lower(): name = name.title()  # some OSM names are all lowercase
+        x, z = (e['lon'] - lon0) * kx, -(e['lat'] - lat0) * kz
+        i = min(range(0, len(route), 2), key=lambda k: (route[k][0] - x) ** 2 + (route[k][1] - z) ** 2)
+        if math.hypot(route[i][0] - x, route[i][1] - z) > 40: continue
+        key = re.sub(r'\W+', '', name.lower())
+        if key not in found: found[key] = {'name': name, 'd': round(cum[i]), 'x': round(x, 1), 'z': round(z, 1)}
+    picked = []
+    for st in sorted(found.values(), key=lambda q: q['d']):
+        if st['d'] < 300 or st['d'] > cum[-1] - 300: continue
+        if picked and st['d'] - picked[-1]['d'] < spacing: continue
+        picked.append(st)
+    if len(picked) > limit:  # keep an even spread
+        picked = [picked[round(k * (len(picked) - 1) / (limit - 1))] for k in range(limit)]
+    return picked
+
+
+def hairpins(route, cum, stops, total=9):
+    """Numbered hairpin bends. Hairpins named in OSM (e.g. a "7th Hair pin bend" bus stop) anchor the numbering; the
+    others are the sharpest bends (heading turns back >120 degrees within 120 m) before/after the anchors."""
+    h = [math.atan2(route[i + 1][0] - route[i][0], route[i + 1][1] - route[i][1]) for i in range(len(route) - 1)]
+    turn = sorted(((abs((h[i + 15] - h[i - 15] + math.pi) % (2 * math.pi) - math.pi), i) for i in range(15, len(h) - 15)), reverse=True)
+    cands = []
+    for a, i in turn:
+        if a < math.radians(120): break
+        if all(abs(cum[i] - cum[j]) > 150 for j in cands): cands.append(i)
+    anchors = {}
+    for q in stops:
+        mt = re.match(r'\s*(\d+)\s*\w*\s*hair', q['name'], re.I)
+        if mt: anchors[int(mt.group(1))] = q['d']
+    if not anchors: return [{'name': f'Hairpin {k + 1}', 'd': round(cum[i]), 'x': round(route[i][0], 1), 'z': round(route[i][1], 1)} for k, i in enumerate(sorted(cands[:total]))]
+    lo, hi = min(anchors), max(anchors)
+    near = lambda d: min(range(len(cum)), key=lambda k: abs(cum[k] - d))
+    picked = {n: near(d) for n, d in anchors.items()}
+    below = sorted([i for i in cands if cum[i] < anchors[lo] - 150][:lo - 1])  # strongest bends, then in road order
+    above = sorted([i for i in cands if cum[i] > anchors[hi] + 150][:total - hi])
+    for n, i in zip(range(1, lo), below): picked[n] = i
+    for n, i in zip(range(hi + 1, total + 1), above): picked[n] = i
+    return [{'name': f'Hairpin {n}', 'd': round(cum[i]), 'x': round(route[i][0], 1), 'z': round(route[i][1], 1)} for n, i in sorted(picked.items(), key=lambda q: cum[q[1]])]
+
+
+def refresh_stops(m, path, gap=1800):
+    with open(path) as f: d = json.load(f)
+    lat0, lon0 = d['origin']
+    kx = 111320 * math.cos(math.radians(lat0)); kz = 110574
+    route = [(p[0], p[1]) for p in d['points']]
+    cum = [0.0]
+    for i in range(1, len(route)): cum.append(cum[-1] + dist(route[i - 1], route[i]))
+    stops = find_stops(route, lambda x, z: (lat0 - z / kz, lon0 + x / kx), lat0, lon0, kx, kz)
+    if m.get('hairpins'): stops = sorted(hairpins(route, cum, stops) + [q for q in stops if 'hair' not in q['name'].lower()], key=lambda q: q['d'])
+    # fill long gaps with the route's landmarks
+    extra = [{'name': q['name'], 'd': round(cum[min(q['idx'], len(cum) - 1)]), 'x': q['x'], 'z': q['z']} for q in d.get('pois', [])]
+    while True:
+        marks = [0] + [q['d'] for q in stops] + [cum[-1]]
+        gaps = sorted(((marks[k + 1] - marks[k], marks[k], marks[k + 1]) for k in range(len(marks) - 1) if marks[k + 1] - marks[k] > gap), reverse=True)
+        placed = False
+        for _, a, b in gaps:
+            inside = [q for q in extra if a + 400 < q['d'] < b - 400]
+            if inside:
+                best = min(inside, key=lambda q: abs(q['d'] - (a + b) / 2))
+                stops = sorted(stops + [best], key=lambda q: q['d']); extra.remove(best); placed = True
+                break
+        if not placed: break
+    d['stops'] = stops
+    print(f"{m['id']:>11}: {len(d['stops'])} stops: " + ', '.join(q['name'] for q in d['stops']))
+    time.sleep(2)
+    return d
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     args = sys.argv[1:]
-    pois_only = '--pois' in args
+    pois_only, stops_only = '--pois' in args, '--stops' in args
     only = set(a for a in args if not a.startswith('--'))
     index = []
     for m in MAPS:
         path = os.path.join(OUT, m['id'] + '.json')
         if not only or m['id'] in only:
-            data = refresh_pois(m, path) if pois_only else build(m)
+            data = refresh_pois(m, path) if pois_only else refresh_stops(m, path) if stops_only else build(m)
             with open(path, 'w') as f: json.dump(data, f, separators=(',', ':'))
         with open(path) as f: d = json.load(f)
         e = {k: d[k] for k in ('id', 'name', 'sub', 'start', 'end', 'length')}

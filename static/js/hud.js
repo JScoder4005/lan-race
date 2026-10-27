@@ -6,6 +6,8 @@ export class HUD {
   constructor(track) {
     this.tach = $('tach').getContext('2d');
     this.mm = $('minimap').getContext('2d');
+    this.sb = $('stopbar').getContext('2d');
+    this.stops = [];
     this.setTrack(track);
     this.bigTimer = 0;
     this.cache = {};
@@ -19,6 +21,42 @@ export class HUD {
     this.cache[k] = v;
     const el = this.els[id] ||= $(id);
     if (prop === 'width' || prop === 'display') el.style[prop] = v; else el[prop] = v;
+  }
+
+  // Route checkpoints (real bus stops / landmarks), shown on the minimap and as a line diagram under it.
+  setStops(stops, endName) {
+    this.stops = stops; this.endName = endName;
+    this.put('stopbar', 'display', stops.length ? 'block' : 'none');
+  }
+
+  drawStops(me, next, t) {
+    const c = this.sb, W = 480, H = 150, tr = this.track, x0 = 30, x1 = W - 30, y = 40;
+    const span = tr.finishDist - tr.startDist, fx = (d) => x0 + Math.max(0, Math.min(1, (d - tr.startDist) / span)) * (x1 - x0);
+    c.clearRect(0, 0, W, H);
+    c.fillStyle = 'rgba(5,8,14,0.7)'; c.strokeStyle = 'rgba(57,230,255,0.6)'; c.lineWidth = 3;
+    c.beginPath(); c.roundRect(2, 2, W - 4, H - 4, 18); c.fill(); c.stroke();
+    const px = fx(me.dist);
+    c.lineCap = 'round'; c.lineWidth = 8;
+    c.strokeStyle = 'rgba(160,170,190,0.35)'; c.beginPath(); c.moveTo(x0, y); c.lineTo(x1, y); c.stroke();
+    c.strokeStyle = '#39e6ff'; c.beginPath(); c.moveTo(x0, y); c.lineTo(px, y); c.stroke();
+    const ring = (x, r, fill, stroke) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = 4; c.stroke(); } };
+    ring(x0, 10, '#7cff6b'); ring(x1, 10, '#ff2e88');
+    this.stops.forEach((s, i) => {
+      const x = fx(s.d);
+      if (i < next) ring(x, 9, '#ffb400');
+      else if (i === next) { ring(x, 10 + Math.sin(t * 6) * 2, '#0a0e16', '#ffffff'); }
+      else ring(x, 8, '#0a0e16', 'rgba(200,210,230,0.7)');
+    });
+    c.fillStyle = '#ffffff'; c.beginPath(); c.moveTo(px, y - 12); c.lineTo(px - 9, y - 28); c.lineTo(px + 9, y - 28); c.closePath(); c.fill();
+    const target = this.stops[next], name = target ? target.name : this.endName, d = (target ? target.d : tr.finishDist) - me.dist;
+    c.textBaseline = 'alphabetic';
+    c.font = '800 22px Arial, sans-serif'; c.fillStyle = '#39e6ff'; c.textAlign = 'left';
+    c.fillText(target ? `NEXT STOP ${next + 1}/${this.stops.length}` : 'FINISH', 22, 92);
+    c.textAlign = 'right'; c.fillStyle = '#ffffff';
+    c.fillText(d > 1000 ? `${(d / 1000).toFixed(1)} km` : `${Math.max(0, Math.round(d))} m`, W - 22, 92);
+    c.textAlign = 'left'; c.font = 'italic 900 30px "Arial Black", Impact, sans-serif';
+    const text = String(name).toUpperCase(), maxW = W - 44, w = c.measureText(text).width;
+    c.save(); c.translate(22, 130); if (w > maxW) c.scale(maxW / w, 1); c.fillText(text, 0, 0); c.restore();
   }
 
   setTrack(track) {
@@ -146,6 +184,10 @@ export class HUD {
     c.strokeStyle = '#ffb400'; c.lineWidth = 10;
     c.beginPath(); c.moveTo(s0.x + s0.tz * HW, s0.z - s0.tx * HW); c.lineTo(s0.x - s0.tz * HW, s0.z + s0.tx * HW); c.stroke();
     const dot = (x, z, r, col) => { c.beginPath(); c.arc(x, z, r / s, 0, Math.PI * 2); c.fillStyle = col; c.fill(); };
+    for (const st of this.stops) { // checkpoints: amber once passed, white ahead
+      c.lineWidth = 2.5 / s; c.strokeStyle = '#0a0e16';
+      c.beginPath(); c.arc(st.x, st.z, 6 / s, 0, Math.PI * 2); c.fillStyle = st.d <= me.dist ? '#ffb400' : '#ffffff'; c.fill(); c.stroke();
+    }
     const flash = Math.floor(t * 6) % 2 ? '#ff2a2a' : '#2a5bff';
     for (const cp of otherCops) dot(cp[0], cp[1], 4, flash);
     for (const cp of cops) dot(cp.ph.x, cp.ph.z, 5, cp.dead ? '#555' : flash);

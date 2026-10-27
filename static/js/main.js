@@ -124,7 +124,7 @@ const pursuit = new Pursuit(scene, track);
 const G = {
   phase: 'loading', mode: 'race', laps: 3, trafficOn: true, startAt: 0, slot: 0, grid: {},
   prog: 0, lastDist: 0, completed: 0, lapStart: 0, best: 0, finished: false, finishMs: 0, finishPos: 0,
-  wrongT: 0, camMode: 0, mw: false, lastCount: -1, lastLit: -1, goShown: false, escT: 0,
+  stops: [], nextStop: 0, wrongT: 0, camMode: 0, mw: false, lastCount: -1, lastLit: -1, goShown: false, escT: 0,
   lobby: { players: [], host: null, phase: 'lobby' }, results: null, freezeUntil: 0,
   driftT: 0, hitCd: 0, sendT: 0, blur: 0,
 };
@@ -377,6 +377,10 @@ async function loadMap(id) {
     if (imp > 6) hud.popup(imp > 14 ? 'WRECKED!' : 'TAKEDOWN', '#ffb400');
   };
   hud.setTrack(track);
+  // checkpoints along sprint routes: real bus stops (and landmarks / numbered ghat hairpins where stops are sparse)
+  G.stops = (data?.stops || []).map((q) => ({ name: q.name, x: q.x, z: q.z, d: track.nearest(q.x, q.z).dist }))
+    .filter((q) => q.d > track.startDist + 60 && q.d < track.finishDist - 60).sort((a, b) => a.d - b.d);
+  hud.setStops(G.stops, data?.end || '');
   pursuit.track = track;
   pursuit.reset();
   applySky(sky, scene, T.sky);
@@ -428,7 +432,7 @@ function toMenu() {
 }
 
 function startEvent(m) {
-  G.phase = 'race'; G.mode = m.mode; G.laps = m.laps; G.trafficOn = m.traffic; G.startAt = m.startAt; G.grid = m.grid;
+  G.phase = 'race'; G.mode = m.mode; G.laps = m.laps; G.trafficOn = m.traffic; G.startAt = m.startAt; G.grid = m.grid; G.nextStop = 0;
   G.slot = m.grid[net.id] ?? 0;
   const g = gridSlot(track, G.slot);
   me = new CarPhysics(track, vehicleOpts(car));
@@ -586,6 +590,10 @@ function updateRace(dt, inp, st, t) {
 
   // progress / laps
   G.prog += track.delta(me.dist, G.lastDist);
+  while (G.stops.length && G.nextStop < G.stops.length && me.dist >= G.stops[G.nextStop].d && st >= G.startAt) {
+    const q = G.stops[G.nextStop++];
+    hud.popup(`📍 ${esc(q.name.toUpperCase())}`, '#ffb400', `CHECKPOINT ${G.nextStop}/${G.stops.length} · ${fmt((st - G.startAt) / 1000)}`);
+  }
   G.lastDist = me.dist;
   const finishRace = () => {
     G.finished = true; G.finishMs = st - G.startAt;
@@ -848,6 +856,7 @@ function frame() {
       if (r?.live) { others.push({ x: r.st.x, z: r.st.z, color: p.color }); for (const v of r.cops) otherCops.push([v.root.position.x, v.root.position.z]); }
     }
     hud.drawMinimap(me, others, pursuit.cops, otherCops, t);
+    if (G.stops.length) hud.drawStops(me, G.nextStop, t);
     let vis = 0; for (const [, r] of remotes) if (r.live) vis++;
     hud.net(`${Math.round(net.rtt || 0)} ms · ${perf.fps} fps · ${qName} · ${G.lobby.players.length} driver${G.lobby.players.length === 1 ? '' : 's'} · ${vis} visible`);
   }
