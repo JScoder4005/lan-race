@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { Track, buildWorld, gridSlot, setRoadWidth } from './track.js';
 import { CarPhysics, collide, clamp, wrapAngle } from './physics.js';
-import { loadCarModels, ensureCar, carLoaded, CarVisual, CARS, CAR_IDS, POLICE_CAR, VEHICLE_CREDITS, vehicleOpts, vehicleMass } from './cars.js';
-import { Traffic, loadTrafficModels } from './traffic.js';
+import { initTextureDecoder, loadCarModels, ensureCar, carLoaded, CarVisual, CARS, CAR_IDS, POLICE_CAR, VEHICLE_CREDITS, vehicleOpts, vehicleMass } from './cars.js';
+import { Traffic, loadTrafficModels, loadNearModel } from './traffic.js';
 import { Particles, Skidmarks, Rain } from './fx.js';
 import { buildTokyo } from './tokyo.js';
 import { Music } from './music.js';
@@ -49,7 +49,8 @@ const heads = [0].map(() => { // one centred beam: each light costs every lit pi
   return s;
 });
 
-const { composer, bloom, grade } = createComposer(renderer, scene, camera);
+const { composer, bloom, grade, smaa } = createComposer(renderer, scene, camera);
+initTextureDecoder(renderer);
 
 let track = new Track();
 let world = null, props = null, city = null, trafficModels = null, mapIndex = [];
@@ -63,9 +64,9 @@ const rain = new Rain(scene);
 // Graphics presets. Every dynamic light costs every lit pixel, so counts stay small; AUTO benchmarks in the lobby
 // (see autoBench) so the preset never changes mid-race, which would recompile every shader.
 const QUALITY = {
-  high: { pr: 1.25, msaa: 4, lamps: 3, cops: 2, rain: 2600, bloom: true, blur: true, traffic: 520 },
-  medium: { pr: 1.0, msaa: 2, lamps: 2, cops: 1, rain: 1400, bloom: true, blur: true, traffic: 400 },
-  low: { pr: 0.75, msaa: 0, lamps: 0, cops: 1, rain: 700, bloom: false, blur: false, traffic: 280 },
+  high: { pr: 1.25, msaa: 0, smaa: true, lamps: 3, cops: 2, rain: 2600, bloom: true, blur: true, traffic: 520 },
+  medium: { pr: 1.0, msaa: 0, smaa: true, lamps: 2, cops: 1, rain: 1400, bloom: true, blur: true, traffic: 400 },
+  low: { pr: 0.75, msaa: 0, smaa: false, lamps: 0, cops: 1, rain: 700, bloom: false, blur: false, traffic: 280 },
 };
 let gfxSetting = 'auto';
 try { gfxSetting = localStorage.getItem('nh.gfx') || 'auto'; } catch { /* ignore */ }
@@ -78,6 +79,7 @@ function applyQuality(name) {
   lampLights.forEach((l, i) => { l.visible = i < Q.lamps; });
   copLights.forEach((l, i) => { l.visible = i < Q.cops; });
   bloom.enabled = Q.bloom;
+  smaa.enabled = Q.smaa;
   rain.setCount(Q.rain);
   if (traffic) traffic.drawDist = Q.traffic;
   onResize();
@@ -394,7 +396,25 @@ async function loadMap(id) {
   renderer.compile(scene, camera);
   for (const m of hidden) m.visible = false;
   policeWarm.root.visible = false;
+  loadNearTraffic(traffic);
   renderLobby();
+}
+
+// Close-up detail: in the background, traffic types that also exist as player vehicles get that full-detail model
+// (more triangles, 1024 px compressed textures) for vehicles within ~45 m. Shaders compile as each arrives, so
+// nothing compiles on first sight.
+async function loadNearTraffic(tr) {
+  for (const ty of tr.types) {
+    const id = ty.type.startsWith('real:') && ty.type.slice(5);
+    if (!id || !VEHICLE_CREDITS[id]) continue;
+    const m = await loadNearModel(id);
+    if (traffic !== tr) return; // map changed meanwhile
+    if (!m) continue;
+    const meshes = tr.attachNear(ty.type, m);
+    for (const im of meshes) im.visible = true;
+    renderer.compile(scene, camera);
+    for (const im of meshes) im.visible = false;
+  }
 }
 
 // ---------- flow ----------

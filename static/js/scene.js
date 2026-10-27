@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 const C = (r, g, b) => new THREE.Color().setRGB(r, g, b);
@@ -82,11 +83,20 @@ export function buildEnvironment(renderer, name = 'tokyo') {
 }
 
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, blur: { value: 0 }, time: { value: 0 }, mw: { value: 0 }, aspect: { value: 1 } },
+  uniforms: { tDiffuse: { value: null }, blur: { value: 0 }, time: { value: 0 }, mw: { value: 0 }, aspect: { value: 1 }, exposure: { value: 0.95 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float blur, time, mw, aspect; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float blur, time, mw, aspect, exposure; varying vec2 vUv;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    // ACES filmic (same fit as three.js) + sRGB, done here so the result is final whether this pass draws to the
+    // screen or feeds the SMAA pass that follows it.
+    vec3 rrt(vec3 v){ vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
+    vec3 aces(vec3 c){
+      const mat3 inM = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
+      const mat3 outM = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
+      return clamp(outM * rrt(inM * (c * exposure / 0.6)), 0.0, 1.0);
+    }
+    vec3 srgb(vec3 c){ return mix(pow(c, vec3(0.41666)) * 1.055 - 0.055, c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308)))); }
     void main(){
       vec2 dir = vUv - 0.5;
       vec3 col;
@@ -103,7 +113,7 @@ const GradeShader = {
         col /= 6.0;
       } else col = texture2D(tDiffuse, vUv).rgb;
       // tone mapping + sRGB here instead of a separate OutputPass (one less full-screen pass)
-      col = linearToOutputTexel(vec4(toneMapping(col), 1.0)).rgb;
+      col = srgb(aces(col));
       if (mw > 0.5) {
         float l = dot(col, vec3(0.299, 0.587, 0.114));
         col = mix(col, vec3(l * 1.12, l * 0.98, l * 0.68), 0.58);
@@ -128,5 +138,8 @@ export function createComposer(renderer, scene, camera) {
   composer.addPass(bloom);
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
-  return { composer, bloom, grade };
+  // Post-process anti-aliasing on the final image: much cheaper than multisampling the HDR scene target.
+  const smaa = new SMAAPass(size.x, size.y);
+  composer.addPass(smaa);
+  return { composer, bloom, grade, smaa };
 }

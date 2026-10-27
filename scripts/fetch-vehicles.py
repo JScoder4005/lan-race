@@ -4,8 +4,11 @@ writes their credits. Needs a Sketchfab API token (Settings -> Password & API) i
 for the download requests and never written to disk.
 
     SKETCHFAB_TOKEN=... python3 scripts/fetch-vehicles.py [id ...]
+
+Textures become GPU-compressed KTX2 when KTX-Software's `toktx` is on PATH (only needed here, not by players);
+otherwise WebP.
 """
-import csv, json, os, subprocess, sys, tempfile, time, urllib.error, urllib.request, zipfile
+import csv, json, os, shutil, subprocess, sys, tempfile, time, urllib.error, urllib.request, zipfile
 
 ROOT = os.path.join(os.path.dirname(__file__), '..', 'static', 'models')
 UA = 'lan-racer-assets/1.0 (hobby LAN game)'
@@ -83,11 +86,16 @@ def triangles(path):
     return sum(int(r[head.index('glPrimitives')]) * int(r[head.index('instances')] or 1) for r in rows[1:] if len(r) == len(head) and r[head.index('mode')] == 'TRIANGLES')
 
 
+TEXTURES = 'ktx2' if shutil.which('toktx') else 'webp'
+# Distant traffic stays WebP at 512 px: ETC1S at that size shows artefacts, and close-ups use the KTX2 player model.
+TRAFFIC_TEXTURES = 'webp'
+
+
 def optimize(raw, out, faces, budget, tex):
     """Simplifies until the model fits its triangle budget, loosening the error bound as needed."""
     ratio = min(1.0, budget / max(faces, 1))
     for err in (0.003, 0.01, 0.025, 0.05):
-        cmd = TRANSFORM + ['optimize', raw, out, '--compress', 'draco', '--texture-compress', 'webp', '--texture-size', str(tex),
+        cmd = TRANSFORM + ['optimize', raw, out, '--compress', 'draco', '--texture-compress', TEXTURES if tex > 512 else TRAFFIC_TEXTURES, '--texture-size', str(tex),
                            '--instance', 'false', '--join', 'false', '--flatten', 'false', '--palette', 'false']
         cmd += ['--simplify', 'true', '--simplify-ratio', f'{ratio:.3f}', '--simplify-error', str(err)] if ratio < 0.95 else ['--simplify', 'false']
         subprocess.run(cmd, check=True, capture_output=True)
@@ -126,7 +134,9 @@ def main():
             # three.js no longer renders the old spec/gloss workflow some uploads use: convert to metal/rough
             subprocess.run(TRANSFORM + ['metalrough', raw, raw], check=True, capture_output=True)
             faces = info.get('faceCount') or 50000
+            # distant traffic needs little texture detail: close-ups switch to the 1024 px player model in game
             for kind, budget, tex in (('vehicles', player, 1024), ('traffic', traffic, 512)):
+                if os.environ.get('ONLY') and kind != os.environ['ONLY']: continue
                 if not budget: continue
                 out = os.path.join(ROOT, kind, vid + '.glb')
                 tris = optimize(raw, out, faces, budget, tex)

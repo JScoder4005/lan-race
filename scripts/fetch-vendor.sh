@@ -23,6 +23,14 @@ files=(
   examples/jsm/libs/draco/gltf/draco_decoder.js
   examples/jsm/libs/draco/gltf/draco_wasm_wrapper.js
   examples/jsm/libs/draco/gltf/draco_decoder.wasm
+  examples/jsm/loaders/KTX2Loader.js
+  examples/jsm/utils/WorkerPool.js
+  examples/jsm/libs/ktx-parse.module.js
+  examples/jsm/libs/zstddec.module.js
+  examples/jsm/libs/basis/basis_transcoder.js
+  examples/jsm/libs/basis/basis_transcoder.wasm
+  examples/jsm/postprocessing/SMAAPass.js
+  examples/jsm/shaders/SMAAShader.js
 )
 for f in "${files[@]}"; do
   mkdir -p "$OUT/$(dirname "$f")"

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Player car roster. Meshes are matched by node or material name so new models only need a config entry.
@@ -79,11 +80,17 @@ const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff
 const flameOuter = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 0.75, 0.18), transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false });
 const flameInner = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 1.2, 4.2), transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
 
+// Vehicle textures are GPU-compressed KTX2 (Basis), transcoded in the browser to whatever the GPU supports.
+let ktx2 = null;
+export function initTextureDecoder(renderer) {
+  ktx2 = new KTX2Loader().setTranscoderPath('vendor/three/examples/jsm/libs/basis/').detectSupport(renderer);
+}
 export function gltfLoader() {
   const draco = new DRACOLoader();
   draco.setDecoderPath('vendor/three/examples/jsm/libs/draco/gltf/');
   const loader = new GLTFLoader();
   loader.setDRACOLoader(draco);
+  if (ktx2) loader.setKTX2Loader(ktx2);
   return loader;
 }
 

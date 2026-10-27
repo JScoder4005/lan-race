@@ -191,6 +191,13 @@ function bakeReal(gltf, cfg) {
   return { parts, dims, head: l.head, tail: l.tail, real: true, mass: cfg.mass };
 }
 
+// Full-detail versions (the player-car files) for close-up traffic, loaded in the background after a map is ready.
+const nearCache = {};
+export function loadNearModel(id) {
+  return (nearCache[id] ||= gltfLoader().loadAsync(`models/vehicles/${id}.glb`).then((g) => bakeReal(g, REAL[id])).catch(() => null));
+}
+export const realIds = () => Object.keys(REAL);
+
 export async function loadTrafficModels() {
   const loader = gltfLoader();
   const out = {};
@@ -411,6 +418,8 @@ export class Traffic {
     const extraMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
     this.meshes = [];
     this.types = [];
+    this.byType = {};
+    this.scene = scene;
     const busCols = (CITY_BUSES[mapId] || ['bmtc']).filter((id) => id !== 'private').map((id) => LIVERY[id].bottom);
     const pickCol = (list) => { let x = r() * list.reduce((a, q) => a + q[1], 0); for (const [c, w] of list) { x -= w; if (x <= 0) return c; } return list[0][0]; };
     let total = 0;
@@ -419,7 +428,7 @@ export class Traffic {
       // Only vehicles near the camera are drawn: instance slots are refilled every frame (see update).
       // Every part of a type shares ONE matrix (and colour) buffer, so a type costs one GPU upload per frame, not one per part.
       const buf = (size) => new THREE.InstancedBufferAttribute(new Float32Array(n * size), size).setUsage(THREE.DynamicDrawUsage);
-      const ty = { meshes: [], tinted: [], head: null, tail: null, n: 0, nl: 0, mat: buf(16), col: buf(3), lmat: buf(16), lcol: buf(3) };
+      const ty = { meshes: [], tinted: [], head: null, tail: null, n: 0, nl: 0, mat: buf(16), col: buf(3), lmat: buf(16), lcol: buf(3), cap: n, type, near: null };
       const mk = (geo, material, tinted, lamp = false) => {
         const im = new THREE.InstancedMesh(geo, material, n);
         im.instanceMatrix = lamp ? ty.lmat : ty.mat;
@@ -445,6 +454,7 @@ export class Traffic {
       ty.tail = mk(m.tail, tailMat, true, true);
       ty.nl = 0;
       this.types.push(ty);
+      this.byType[type] = ty;
       const isBus = isBusType(type), isTw = m.real ? !!REAL[type.slice(5)]?.ride : m.tint === true;
       list.forEach((p, i) => {
         const col = new THREE.Color();
@@ -478,6 +488,23 @@ export class Traffic {
     this._tmp = {}; this._c = new THREE.Color();
     this.onKnock = null;
     this.drawDist = 520;
+  }
+
+  // Full-detail model for close-up vehicles of a type (same lamps, slots and colours as the light version).
+  attachNear(type, m) {
+    const ty = this.byType[type];
+    if (!ty || ty.near) return [];
+    const buf = (size) => new THREE.InstancedBufferAttribute(new Float32Array(ty.cap * size), size).setUsage(THREE.DynamicDrawUsage);
+    const lod = ty.near = { meshes: [], tinted: [], n: 0, mat: buf(16), col: buf(3) };
+    const own = REAL[type.slice(5)]?.ownLivery;
+    for (const part of m.parts) {
+      const im = new THREE.InstancedMesh(part.geo, part.mat, ty.cap);
+      im.instanceMatrix = lod.mat;
+      if (part.paint && !own) { im.instanceColor = lod.col; lod.tinted.push(im); }
+      im.frustumCulled = false; im.count = 0; im.visible = false;
+      this.scene.add(im); this.meshes.push(im); lod.meshes.push(im);
+    }
+    return lod.meshes;
   }
 
   // ---------- driving sim ----------
@@ -715,7 +742,8 @@ export class Traffic {
     const s = this._tmp, L = this.track.length, E = this._e, col = this._c, Lq = this.Lq;
     const R2 = this.drawDist * this.drawDist;
     let nBeam = 0;
-    for (const ty of this.types) ty.n = ty.nl = 0;
+    for (const ty of this.types) { ty.n = ty.nl = 0; if (ty.near) ty.near.n = 0; }
+    const NEAR2 = 45 * 45;
     const LIGHTS2 = Math.max(R2, 1500 * 1500);
     for (const c of this.cars) {
       let pitch = 0, roll = 0, brake = 1;
@@ -768,9 +796,10 @@ export class Traffic {
       this._m.toArray(ty.lmat.array, ls * 16);
       col.setRGB(brake, brake, brake).toArray(ty.lcol.array, ls * 3);
       if (d2 > R2) continue;
-      const slot = ty.n++;
-      this._m.toArray(ty.mat.array, slot * 16);
-      c.col.toArray(ty.col.array, slot * 3);
+      const lod = ty.near && d2 < NEAR2 ? ty.near : ty; // close-up vehicles use the full-detail model
+      const slot = lod.n++;
+      this._m.toArray(lod.mat.array, slot * 16);
+      c.col.toArray(lod.col.array, slot * 3);
       if (!c.knocked) {
         this.beams.setMatrixAt(nBeam, this._m);
         this._sq.setFromEuler(E.set(pitch, c.yaw, 0)); // follow the road grade
@@ -780,9 +809,12 @@ export class Traffic {
     }
     const upload = (a, n) => { if (n) { a.addUpdateRange(0, n * a.itemSize); a.needsUpdate = true; } };
     for (const ty of this.types) {
-      for (const im of ty.meshes) { im.count = ty.n; im.visible = ty.n > 0; }
+      for (const lod of ty.near ? [ty, ty.near] : [ty]) {
+        for (const im of lod.meshes) { im.count = lod.n; im.visible = lod.n > 0; }
+        upload(lod.mat, lod.n); upload(lod.col, lod.tinted.length ? lod.n : 0);
+      }
       ty.head.count = ty.tail.count = ty.nl; ty.head.visible = ty.tail.visible = ty.nl > 0;
-      upload(ty.mat, ty.n); upload(ty.col, ty.tinted.length ? ty.n : 0); upload(ty.lmat, ty.nl); upload(ty.lcol, ty.nl);
+      upload(ty.lmat, ty.nl); upload(ty.lcol, ty.nl);
     }
     this.beams.count = nBeam; this.beams.visible = nBeam > 0; upload(this.beams.instanceMatrix, nBeam);
     this.shadows.count = nBeam; this.shadows.visible = nBeam > 0; upload(this.shadows.instanceMatrix, nBeam);
