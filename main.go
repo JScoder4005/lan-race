@@ -1,15 +1,18 @@
 package main
 
 import (
+	"compress/gzip"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +23,41 @@ import (
 
 //go:embed static
 var staticFiles embed.FS
+
+var gzipExts = map[string]bool{
+	".html": true, ".js": true, ".css": true, ".json": true, ".svg": true,
+	".txt": true, ".geojson": true, ".map": true, ".wasm": true,
+}
+
+func canGzip(r *http.Request, p string) bool {
+	if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		return false
+	}
+	if p == "" || p == "/" {
+		return true
+	}
+	i := strings.LastIndex(p, ".")
+	return i >= 0 && gzipExts[strings.ToLower(p[i:])]
+}
+
+type gzipResponseWriter struct {
+	http.ResponseWriter
+	w        io.Writer
+	stripped bool
+}
+
+func (g *gzipResponseWriter) WriteHeader(code int) {
+	g.ResponseWriter.Header().Del("Content-Length")
+	g.ResponseWriter.WriteHeader(code)
+}
+
+func (g *gzipResponseWriter) Write(b []byte) (int, error) {
+	if !g.stripped {
+		g.ResponseWriter.Header().Del("Content-Length")
+		g.stripped = true
+	}
+	return g.w.Write(b)
+}
 
 var epoch = time.Now()
 
@@ -393,7 +431,24 @@ func main() {
 	sub, _ := fs.Sub(staticFiles, "static")
 	files := http.FileServer(http.FS(sub))
 	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-cache")
+		// Long cache for immutable asset dirs; no-cache for everything else so the shell stays fresh.
+		p := r.URL.Path
+		dir, _ := path.Split(p)
+		if strings.HasPrefix(dir, "/models/") || strings.HasPrefix(dir, "/fonts/") ||
+			strings.HasPrefix(dir, "/vendor/") || strings.HasPrefix(dir, "/sfx/") ||
+			strings.HasPrefix(dir, "/maps/") || strings.HasPrefix(dir, "/photos/") {
+			w.Header().Set("Cache-Control", "public, max-age=604800, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		if canGzip(r, p) {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Add("Vary", "Accept-Encoding")
+			gz := gzip.NewWriter(w)
+			defer gz.Close()
+			files.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, w: gz}, r)
+			return
+		}
 		files.ServeHTTP(w, r)
 	}))
 	http.HandleFunc("/ws", h.serveWS)

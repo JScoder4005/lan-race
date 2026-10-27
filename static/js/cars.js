@@ -267,10 +267,13 @@ const _q = new THREE.Quaternion(), _x = new THREE.Vector3(1, 0, 0), _m = new THR
 
 // Low-poly rider posed for the bike type, sized from the bike's dimensions. Helmet takes the player's colour.
 const riderMats = {
-  suit: new THREE.MeshStandardMaterial({ color: 0x1b1d22, roughness: 0.75 }),
+  suit: new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.6, metalness: 0.05 }),
+  pants: new THREE.MeshStandardMaterial({ color: 0x1a1c22, roughness: 0.7 }),
+  pad: new THREE.MeshStandardMaterial({ color: 0xc23a2a, roughness: 0.55, metalness: 0.05 }),
   skin: new THREE.MeshStandardMaterial({ color: 0x8a5a3c, roughness: 0.7 }),
-  visor: new THREE.MeshPhysicalMaterial({ color: 0x05070a, roughness: 0.05, metalness: 0.5, clearcoat: 1 }),
-  boot: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.6 }),
+  visor: new THREE.MeshPhysicalMaterial({ color: 0x05070a, roughness: 0.03, metalness: 0.6, clearcoat: 1, clearcoatRoughness: 0.02 }),
+  glove: new THREE.MeshStandardMaterial({ color: 0x0c0d10, roughness: 0.5 }),
+  boot: new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.55, metalness: 0.1 }),
 };
 const POSE = { // torso forward lean (rad), seat height, seat z, bar height, bar z, foot z (fractions of length / metres)
   sport: { lean: 0.95, seatY: 0.8, seatZ: -0.14, barY: 0.86, barZ: 0.26, footY: 0.36, footZ: -0.12, knee: 0.3 },
@@ -282,33 +285,67 @@ function buildRider(parent, d, ride = 'naked', color = 0xffffff) {
   const P = POSE[ride] || POSE.naked, L = d.l, zc = (d.minZ + d.maxZ) / 2;
   const g = new THREE.Group();
   const V = (x, y, z) => new THREE.Vector3(x, y, z);
-  const limb = (a, b, r, mat) => {
+  const limb = (a, b, r, mat, taper = 1) => {
     const len = a.distanceTo(b);
-    const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.01, len - 2 * r), 4, 8), mat);
+    const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.01, len - 2 * r), 5, 10), mat);
     m.position.copy(a).add(b).multiplyScalar(0.5);
     m.quaternion.setFromUnitVectors(V(0, 1, 0), b.clone().sub(a).normalize());
+    if (taper !== 1) m.scale.z = taper;
     g.add(m); return m;
   };
-  const hip = V(0, P.seatY + 0.12, zc + P.seatZ * L);
   const dir = V(0, Math.cos(P.lean), Math.sin(P.lean));
-  const neck = hip.clone().addScaledVector(dir, 0.56);
-  limb(hip, neck, 0.17, riderMats.suit);
-  const helmetMat = new THREE.MeshPhysicalMaterial({ color, metalness: 0.3, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.05 });
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), helmetMat);
-  head.position.copy(neck).addScaledVector(dir, 0.17); head.position.z += 0.03; g.add(head);
-  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.162, 14, 8, -0.9, 1.8, 1.05, 0.75), riderMats.visor);
-  visor.position.copy(head.position); g.add(visor);
+  const hip = V(0, P.seatY + 0.12, zc + P.seatZ * L);
+  const chest = hip.clone().addScaledVector(dir, 0.34);
+  const neck = hip.clone().addScaledVector(dir, 0.58);
+  // Pelvis and chest torso built separately so the rider has shoulders and a tapered waist.
+  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, 0.3), riderMats.pants);
+  pelvis.position.copy(hip); g.add(pelvis);
+  limb(hip, chest, 0.18, riderMats.suit, 0.72);
+  limb(chest, neck, 0.16, riderMats.suit, 0.9);
+  // Shoulder pads give the jacket a visible profile.
   for (const sx of [-1, 1]) {
-    const sh = neck.clone().add(V(sx * 0.2, -0.05, 0));
+    const pad = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), riderMats.suit);
+    pad.position.copy(chest).add(V(sx * 0.19, 0.03, 0)); g.add(pad);
+  }
+  // Chest number panel just hints at a jacket graphic.
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.015), riderMats.pad);
+  panel.position.copy(chest).add(dir.clone().multiplyScalar(0.17)).add(V(0, -0.02, 0));
+  panel.quaternion.setFromUnitVectors(V(0, 0, 1), dir); g.add(panel);
+  // Helmet: ellipsoid elongated along forward axis, with a chinstrap and brow visor.
+  const helmetMat = new THREE.MeshPhysicalMaterial({ color, metalness: 0.3, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.03 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 16), helmetMat);
+  head.position.copy(neck).addScaledVector(dir, 0.17); head.position.z += 0.03;
+  head.scale.set(0.92, 1.0, 1.08); g.add(head);
+  const chin = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10, 0, Math.PI * 2, Math.PI * 0.55, Math.PI * 0.45), riderMats.suit);
+  chin.position.copy(head.position).add(dir.clone().multiplyScalar(0.03)).add(V(0, -0.08, 0)); g.add(chin);
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.172, 16, 10, -0.95, 1.9, 0.85, 0.6), riderMats.visor);
+  visor.position.copy(head.position); g.add(visor);
+  const brow = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.08), riderMats.suit);
+  brow.position.copy(head.position).add(dir.clone().multiplyScalar(0.1)).add(V(0, 0.1, 0));
+  brow.quaternion.setFromUnitVectors(V(0, 0, 1), dir); g.add(brow);
+  for (const sx of [-1, 1]) {
+    const sh = chest.clone().add(V(sx * 0.2, 0.04, 0));
     const grip = V(sx * 0.32, P.barY, zc + P.barZ * L);
     const elbow = sh.clone().lerp(grip, 0.5).add(V(sx * 0.07, -0.08, -0.02));
-    limb(sh, elbow, 0.06, riderMats.suit); limb(elbow, grip, 0.05, riderMats.suit);
-    const h = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), riderMats.boot); h.position.copy(grip); g.add(h);
+    limb(sh, elbow, 0.065, riderMats.suit); limb(elbow, grip, 0.052, riderMats.suit);
+    const elbowPad = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), riderMats.pad);
+    elbowPad.position.copy(elbow).add(V(sx * 0.03, 0.02, -0.02)); g.add(elbowPad);
+    const glove = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.08, 0.11), riderMats.glove);
+    glove.position.copy(grip); g.add(glove);
+    const gauntlet = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.052, 0.09, 10), riderMats.glove);
+    gauntlet.position.copy(grip).add(V(0, 0.045, -0.045)); g.add(gauntlet);
     const hp = hip.clone().add(V(sx * 0.12, 0, 0));
     const foot = V(sx * (ride === 'scooter' ? 0.16 : 0.2), P.footY, zc + P.footZ * L);
     const knee = V(sx * 0.2, P.seatY + 0.08, zc + (P.seatZ + P.knee) * L);
-    limb(hp, knee, 0.085, riderMats.suit); limb(knee, foot, 0.065, riderMats.suit);
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.1, 0.26), riderMats.boot); boot.position.copy(foot).add(V(0, 0, 0.06)); g.add(boot);
+    limb(hp, knee, 0.095, riderMats.pants); limb(knee, foot, 0.07, riderMats.pants);
+    const kneePad = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), riderMats.pad);
+    kneePad.position.copy(knee).add(V(sx * 0.02, 0.01, 0.03)); g.add(kneePad);
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.11, 0.3), riderMats.boot);
+    boot.position.copy(foot).add(V(0, -0.01, 0.08)); g.add(boot);
+    const toe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.06), riderMats.boot);
+    toe.position.copy(foot).add(V(0, -0.025, 0.23)); g.add(toe);
+    const bootCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.1, 10), riderMats.boot);
+    bootCollar.position.copy(foot).add(V(0, 0.05, 0)); g.add(bootCollar);
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   g.userData.helmet = helmetMat;
@@ -347,6 +384,7 @@ export class CarVisual {
     this.root.position.y = 0.02;
     this.police = police;
     const d = proto.dims;
+    this.dims = d;
 
     this.bodyMat = new THREE.MeshPhysicalMaterial({
       color: police ? 0x08090c : color, metalness: police ? 0.6 : 1.0, roughness: police ? 0.3 : 0.4,
@@ -427,10 +465,12 @@ export class CarVisual {
 
   // s: {x,z,yaw,fwd,steer,braking,nitro}
   update(dt, s, t) {
-    this.root.position.set(s.x, (s.y || 0) + 0.02, s.z);
+    const wheelie = this.bike ? (s.wheelie || 0) : 0;
+    const halfL = ((this.dims?.l) || 2) * 0.5;
+    this.root.position.set(s.x, (s.y || 0) + 0.02 + Math.sin(wheelie) * halfL, s.z);
     // bikes lean into turns (from physics, or estimated from steering for remote players)
     const lean = this.bike ? -(s.lean ?? Math.max(-0.7, Math.min(0.7, -(s.steer || 0) * Math.min(1, Math.abs(s.fwd || 0) / 18) * 0.7))) : 0;
-    this.root.rotation.set(-(s.pitch || 0), s.yaw, lean, 'YXZ');
+    this.root.rotation.set(-(s.pitch || 0) - wheelie, s.yaw, lean, 'YXZ');
     this.spin += (s.fwd ?? 0) * dt;
     const steer = -(s.steer || 0) * 0.5;
     for (const w of this.wheels) {

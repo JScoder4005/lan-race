@@ -121,6 +121,21 @@ export class Audio {
     o.connect(g); g.connect(this.sfx); o.start(t); o.stop(t + dur + 0.02);
   }
 
+  honk() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const dur = 0.42;
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 420;
+    const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.value = 525;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+    g.gain.setValueAtTime(0.16, t + dur - 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    o1.connect(g); o2.connect(g); g.connect(this.sfx);
+    o1.start(t); o2.start(t); o1.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
+  }
+
   whoosh() {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;
