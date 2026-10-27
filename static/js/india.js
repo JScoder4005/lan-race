@@ -196,28 +196,57 @@ export function buildIndia(scene, track, world, T, plans) {
     const water = new THREE.MeshStandardMaterial({ color: T.water.kind === 'sea' ? 0x0b2a3a : 0x0a2430, roughness: 0.12, metalness: 0.2, envMapIntensity: 2.2 });
     const sand = new THREE.MeshLambertMaterial({ color: T.water.kind === 'sea' ? 0x8a7a5e : 0x5a5650 });
     const span = track.finishDist - track.startDist;
+    // Water is flat (real water is) and below the lowest point of the whole route, so it can never rise over a road;
+    // each row reaches out from the shore on the local water side and stops before any other stretch of road.
+    const level = track.minY - 1.5;
+    // road centre-line samples on a grid, for a cheap "is another stretch of road here?" test
+    const GC = 20, roadGrid = new Map(), gk = (i, j) => i * 100003 + j;
+    for (let i = 0; i < track.n; i += 2) {
+      const k = gk(Math.floor(track.px[i] / GC), Math.floor(track.pz[i] / GC));
+      let a = roadGrid.get(k); if (!a) roadGrid.set(k, a = []); a.push(i);
+    }
+    const R = SW() + 4, R2 = R * R, q = {};
+    const otherRoad = (x, z, d) => {
+      const ci = Math.floor(x / GC), cj = Math.floor(z / GC);
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        for (const i of roadGrid.get(gk(ci + a, cj + b)) || []) {
+          const dx = x - track.px[i], dz = z - track.pz[i];
+          if (dx * dx + dz * dz < R2 && Math.abs(track.cum[i] - d) > 40) return true;
+        }
+      }
+      return false;
+    };
+    const clear = (d, side, from, to, step) => {
+      let len = from;
+      for (; len < to; len += step) { track.sample(d, side * len, q); if (otherRoad(q.x, q.z, d)) break; }
+      return Math.max(from, len - step);
+    };
     for (const [f0, f1] of T.water.ranges) {
       const d0 = track.startDist + f0 * span - (f0 === 0 ? track.startDist : 0), d1 = Math.min(L, track.startDist + f1 * span + (f1 === 1 ? 80 : 0));
-      const side = ws((d0 + d1) / 2) || 1;
       const beach = T.water.beach;
-      const pos = [], sandPos = [];
+      let pos = [], sandPos = [], prevSide = 0;
+      const flush = () => { strip(pos, water); if (beach > 0) strip(sandPos, sand); pos = []; sandPos = []; };
       for (let d = d0; d <= d1; d += 8) {
-        const a = track.sample(d, side * (SW() + beach)), b = track.sample(d, side * (SW() + beach + 2500));
-        const sa = track.sample(d, side * SW());
-        pos.push([a.x, a.z, b.x, b.z, a.y - 1.5]); sandPos.push([sa.x, sa.z, a.x, a.z, a.y + 0.1]);
+        const side = ws(d) || prevSide || 1;
+        if (prevSide && side !== prevSide) flush(); // road turned: start a new strip on the new water side
+        prevSide = side;
+        const shore = SW() + beach;
+        const far = clear(d, side, shore, 2500, 25), sandEnd = clear(d, side, SW(), shore, 5);
+        const sa = track.sample(d, side * SW()), a = track.sample(d, side * sandEnd), b = track.sample(d, side * far);
+        pos.push([a.x, level, a.z, b.x, level, b.z]);
+        sandPos.push([sa.x, sa.y - 0.15, sa.z, a.x, level + 0.25, a.z]); // beach slopes from the kerb down to the water
       }
-      const strip = (rows, dy, mat) => {
-        const v = [];
-        for (let i = 0; i < rows.length - 1; i++) {
-          const [ax, az, bx, bz, y0] = rows[i], [cx, cz, dx, dz, y1] = rows[i + 1];
-          const ya = y0 + dy, yb = y1 + dy;
-          v.push(ax, ya, az, bx, ya, bz, dx, yb, dz, ax, ya, az, dx, yb, dz, cx, yb, cz);
-        }
-        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
-        const mesh = new THREE.Mesh(g, mat); mesh.material.side = THREE.DoubleSide; scene.add(mesh);
-      };
-      strip(pos, 0, water);
-      if (beach > 0) strip(sandPos, 0, sand);
+      flush();
+    }
+    function strip(rows, mat) {
+      if (rows.length < 2) return;
+      const v = [];
+      for (let i = 0; i < rows.length - 1; i++) {
+        const [ax, ay, az, bx, by, bz] = rows[i], [cx, cy, cz, dx, dy, dz] = rows[i + 1];
+        v.push(ax, ay, az, bx, by, bz, dx, dy, dz, ax, ay, az, dx, dy, dz, cx, cy, cz);
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, mat); mesh.material.side = THREE.DoubleSide; mesh.name = mat === water ? 'water' : 'sand'; scene.add(mesh);
     }
   }
 

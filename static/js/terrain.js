@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { HW } from './track.js';
 
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -17,13 +18,34 @@ export function buildTerrain(scene, track, terr, T) {
     }
     return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
   };
+  // Road samples on a coarse grid: terrain must stay under EVERY nearby stretch of road (hairpins stack legs within a
+  // few metres of each other), rising at most CUT per metre away from the road edge — like a cutting in a hillside.
+  const RC = 24, CUT = 2, CLEAR = HW + 12, MAXD = CLEAR + 24, roadCells = new Map(), rk = (i, j) => i * 100003 + j;
+  for (let i = 0; i < track.n; i += 2) {
+    const k = rk(Math.floor(track.px[i] / RC), Math.floor(track.pz[i] / RC));
+    let a = roadCells.get(k); if (!a) roadCells.set(k, a = []); a.push(i);
+  }
+  const reach = Math.ceil(MAXD / RC), M2 = MAXD * MAXD;
+  const carve = (x, z, h) => {
+    const ci = Math.floor(x / RC), cj = Math.floor(z / RC);
+    for (let a = -reach; a <= reach; a++) for (let b = -reach; b <= reach; b++) {
+      const list = roadCells.get(rk(ci + a, cj + b)); if (!list) continue;
+      for (const i of list) {
+        const dx = x - track.px[i], dz = z - track.pz[i], d2 = dx * dx + dz * dz;
+        if (d2 > M2) continue;
+        const lim = track.py[i] - 0.4 + Math.max(0, Math.sqrt(d2) - CLEAR) * CUT;
+        if (lim < h) h = lim;
+      }
+    }
+    return h;
+  };
   const near = {};
   const groundY = (x, z) => {
     const n = track.nearest(x, z, -1, near);
     const d = Math.hypot(x - n.x, z - n.z);
     const g = dem(x, z);
     const w = smooth(18, 110, d);
-    return (g == null ? n.y : n.y * (1 - w) + g * w) - (d < 16 ? 0.3 : 0);
+    return carve(x, z, (g == null ? n.y : n.y * (1 - w) + g * w) - (d < 16 ? 0.3 : 0));
   };
 
   const [flat, steep] = (T.terrainColors || ['#3b3a2c', '#5a4a36']).map((c) => new THREE.Color(c));
@@ -70,7 +92,7 @@ export function buildTerrain(scene, track, terr, T) {
   fine.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   fine.setIndex(idx);
   colorize(fine);
-  scene.add(new THREE.Mesh(fine, mat));
+  const fineMesh = new THREE.Mesh(fine, mat); fineMesh.name = 'terrain'; scene.add(fineMesh);
 
   // Coarse far terrain straight from the SRTM grid (slightly lowered so the fine mesh wins at the seam).
   const cpos = [], cidx = [], cv = new Map();
@@ -93,7 +115,7 @@ export function buildTerrain(scene, track, terr, T) {
     coarse.setAttribute('position', new THREE.Float32BufferAttribute(cpos, 3));
     coarse.setIndex(cidx);
     colorize(coarse);
-    scene.add(new THREE.Mesh(coarse, mat));
+    const coarseMesh = new THREE.Mesh(coarse, mat); coarseMesh.name = 'terrain-far'; scene.add(coarseMesh);
   }
   return groundY;
 }
