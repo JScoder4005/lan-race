@@ -2,7 +2,7 @@ export class Net {
   constructor(handlers) {
     this.h = handlers;
     this.id = null;
-    this.offset = 0;
+    this.offset = 0; this.target = 0;
     this.bestRtt = Infinity;
     this.remotes = new Map(); // id -> {buf:[{t,s}]}
     this.open = false;
@@ -20,10 +20,10 @@ export class Net {
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
       switch (m.t) {
-        case 'welcome': this.id = m.id; this.offset = m.now - performance.now(); this.h.welcome?.(m); break;
+        case 'welcome': this.id = m.id; this.offset = this.target = m.now - performance.now(); this.h.welcome?.(m); break;
         case 'pong': {
           const now = performance.now(), rtt = now - m.c;
-          if (rtt < this.bestRtt * 1.2) { this.bestRtt = Math.min(this.bestRtt, rtt); this.offset = m.now + rtt / 2 - now; }
+          if (rtt < this.bestRtt * 1.2) { this.bestRtt = Math.min(this.bestRtt, rtt); this.target = m.now + rtt / 2 - now; }
           this.rtt = rtt;
           break;
         }
@@ -36,7 +36,12 @@ export class Net {
 
   send(o) { if (this.open) this.ws.send(JSON.stringify(o)); }
   ping() { this.send({ t: 'ping', c: performance.now() }); }
-  now() { return performance.now() + this.offset; }
+  // Server clock. Corrections are slewed (at most 2 ms per call) so race time and traffic never visibly jump.
+  now() {
+    const d = this.target - this.offset;
+    this.offset += Math.abs(d) > 1000 ? d : Math.max(-2, Math.min(2, d));
+    return performance.now() + this.offset;
+  }
 
   onSnap(m) {
     for (const p of m.p) {

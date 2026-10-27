@@ -42,8 +42,8 @@ const lampLights = [];
 for (let i = 0; i < 4; i++) { const l = new THREE.PointLight(0xffa65a, 0, 34, 1.6); scene.add(l); lampLights.push(l); }
 const copLights = [];
 for (let i = 0; i < 3; i++) { const l = new THREE.PointLight(0xff0000, 0, 30, 1.6); scene.add(l); copLights.push(l); }
-const heads = [0, 1].map(() => {
-  const s = new THREE.SpotLight(0xfff1d8, 0, 110, 0.42, 0.55, 1.4);
+const heads = [0].map(() => { // one centred beam: each light costs every lit pixel
+  const s = new THREE.SpotLight(0xfff1d8, 0, 110, 0.5, 0.6, 1.4);
   scene.add(s, s.target);
   return s;
 });
@@ -53,17 +53,18 @@ const { composer, bloom, grade } = createComposer(renderer, scene, camera);
 let track = new Track();
 let world = null, props = null, city = null, trafficModels = null, mapIndex = [];
 const mapCache = {};
-let traffic = null;
+let traffic = null, policeWarm = null;
 const smoke = new Particles(scene, 900, [0.3, 0.31, 0.36], false);
 const sparks = new Particles(scene, 500, [5, 2.2, 0.6], true);
 const skids = new Skidmarks(scene);
 const rain = new Rain(scene);
 
-// Graphics presets; AUTO starts high and steps down when frame time stays above ~22ms.
+// Graphics presets. Every dynamic light costs every lit pixel, so counts stay small; AUTO benchmarks in the lobby
+// (see autoBench) so the preset never changes mid-race, which would recompile every shader.
 const QUALITY = {
-  high: { pr: 1.25, msaa: 4, lamps: 4, cops: 3, rain: 2600, bloom: true, blur: true, traffic: 520 },
-  medium: { pr: 1.0, msaa: 2, lamps: 3, cops: 2, rain: 1400, bloom: true, blur: true, traffic: 400 },
-  low: { pr: 0.75, msaa: 0, lamps: 2, cops: 1, rain: 700, bloom: false, blur: false, traffic: 280 },
+  high: { pr: 1.25, msaa: 4, lamps: 3, cops: 2, rain: 2600, bloom: true, blur: true, traffic: 520 },
+  medium: { pr: 1.0, msaa: 2, lamps: 2, cops: 1, rain: 1400, bloom: true, blur: true, traffic: 400 },
+  low: { pr: 0.75, msaa: 0, lamps: 0, cops: 1, rain: 700, bloom: false, blur: false, traffic: 280 },
 };
 let gfxSetting = 'auto';
 try { gfxSetting = localStorage.getItem('nh.gfx') || 'auto'; } catch { /* ignore */ }
@@ -81,13 +82,29 @@ function applyQuality(name) {
   onResize();
   for (const b of document.querySelectorAll('#gfxSeg button')) b.classList.toggle('on', b.dataset.gfx === gfxSetting);
 }
+// AUTO: in the lobby and during the start countdown, try HIGH then step down until the scene holds ~55 fps, so the
+// preset is settled before the green light. Mid-race, a sustained drop under ~45 fps still steps down.
+const bench = { t: 0, n: 0, done: false, slowT: 0 };
+function autoBench(dt) {
+  const settling = G.phase === 'menu' || (G.phase === 'race' && net.now() < G.startAt);
+  if (gfxSetting !== 'auto' || bench.done || !settling || document.hidden) return;
+  bench.t += dt; bench.n++;
+  if (bench.t < 1.5) return;
+  const avg = bench.t / bench.n;
+  bench.t = 0; bench.n = 0;
+  if (avg > 1 / 55 && qName !== 'low') applyQuality(qName === 'high' ? 'medium' : 'low');
+  else bench.done = true;
+}
 function trackPerf(dt) {
+  autoBench(dt);
   perf.t += dt; perf.n++;
   if (perf.t < 3) return;
   const avg = perf.t / perf.n;
   perf.fps = Math.round(1 / avg);
   perf.t = 0; perf.n = 0;
-  if (gfxSetting === 'auto' && G.phase === 'race' && avg > 1 / 45 && qName !== 'low') {
+  bench.slowT = gfxSetting === 'auto' && G.phase === 'race' && net.now() > G.startAt && avg > 1 / 45 ? bench.slowT + 3 : 0;
+  if (bench.slowT >= 6 && qName !== 'low') {
+    bench.slowT = 0;
     applyQuality(qName === 'high' ? 'medium' : 'low');
     hud.popup(`GRAPHICS: ${qName.toUpperCase()} (AUTO)`, '#8a93a6');
   }
@@ -360,7 +377,15 @@ async function loadMap(id) {
   G.mapId = id; G.theme = T; G.mapInfo = data || TOKYO_INFO;
   // upload every texture now so the first sight of a vehicle or building type mid-race doesn't hitch
   scene.traverse((o) => { for (const m of [].concat(o.material || [])) for (const k in m) if (m[k]?.isTexture) renderer.initTexture(m[k]); });
+  // ...and compile every shader now, including traffic types not yet on screen and the police car (kept hidden so its
+  // programs stay cached), so nothing compiles mid-race.
+  if (!policeWarm) { policeWarm = new CarVisual(POLICE_CAR, 0x08090c, { police: true, beam: false }); scene.add(policeWarm.root); }
+  const hidden = traffic.meshes.filter((m) => !m.visible);
+  for (const m of hidden) m.visible = true;
+  policeWarm.root.visible = true;
   renderer.compile(scene, camera);
+  for (const m of hidden) m.visible = false;
+  policeWarm.root.visible = false;
   renderLobby();
 }
 
@@ -705,12 +730,11 @@ function updateLights(t) {
     L.intensity = 60;
   });
   const fx = Math.sin(me.yaw), fz = Math.cos(me.yaw);
-  heads.forEach((h, i) => {
-    const side = i ? 1 : -1;
-    h.intensity = 130;
-    h.position.set(me.x + fx * 2.1 + fz * 0.65 * side, me.y + 0.7, me.z + fz * 2.1 - fx * 0.65 * side);
-    h.target.position.set(me.x + fx * 30 + fz * 1.5 * side, me.y + Math.tan(me.pitch) * 30, me.z + fz * 30 - fx * 1.5 * side);
-  });
+  for (const h of heads) {
+    h.intensity = 240;
+    h.position.set(me.x + fx * 2.1, me.y + 0.7, me.z + fz * 2.1);
+    h.target.position.set(me.x + fx * 30, me.y + Math.tan(me.pitch) * 30, me.z + fz * 30);
+  }
 }
 
 // After the finish line the player loses control: the car eases into the right lane and parks.
@@ -860,6 +884,7 @@ function ordinal(n) { return n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] 
   for (const b of $('gfxSeg').children) b.onclick = () => {
     gfxSetting = b.dataset.gfx;
     try { localStorage.setItem('nh.gfx', gfxSetting); } catch { /* ignore */ }
+    bench.done = false;
     applyQuality(gfxSetting === 'auto' ? 'high' : gfxSetting);
   };
   applyQuality(gfxSetting === 'auto' ? 'high' : gfxSetting);

@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 const C = (r, g, b) => new THREE.Color().setRGB(r, g, b);
@@ -95,14 +94,16 @@ const GradeShader = {
         float edge = smoothstep(0.12, 0.7, length(dir * vec2(aspect, 1.0)));
         float amt = blur * 0.07 * edge;
         col = vec3(0.0);
-        for (int i = 0; i < 10; i++) {
-          float s = 1.0 - amt * float(i) / 9.0;
+        for (int i = 0; i < 6; i++) {
+          float s = 1.0 - amt * float(i) / 5.0;
           col.r += texture2D(tDiffuse, 0.5 + dir * (s - amt * 0.08)).r;
           col.g += texture2D(tDiffuse, 0.5 + dir * s).g;
           col.b += texture2D(tDiffuse, 0.5 + dir * (s + amt * 0.08)).b;
         }
-        col /= 10.0;
+        col /= 6.0;
       } else col = texture2D(tDiffuse, vUv).rgb;
+      // tone mapping + sRGB here instead of a separate OutputPass (one less full-screen pass)
+      col = linearToOutputTexel(vec4(toneMapping(col), 1.0)).rgb;
       if (mw > 0.5) {
         float l = dot(col, vec3(0.299, 0.587, 0.114));
         col = mix(col, vec3(l * 1.12, l * 0.98, l * 0.68), 0.58);
@@ -120,9 +121,11 @@ export function createComposer(renderer, scene, camera) {
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
   const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.38, 0.32, 2.4);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.5, 0.32, 2.4);
+  // Blur chain from quarter resolution instead of half: ~4x cheaper, the glow looks the same.
+  const setBloomSize = bloom.setSize.bind(bloom);
+  bloom.setSize = (w, h) => setBloomSize(w / 2, h / 2);
   composer.addPass(bloom);
-  composer.addPass(new OutputPass());
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
   return { composer, bloom, grade };

@@ -408,15 +408,17 @@ export class Traffic {
     for (const type in byType) {
       const list = byType[type], m = all[type], n = list.length;
       // Only vehicles near the camera are drawn: instance slots are refilled every frame (see update).
-      const mk = (geo, material, tinted) => {
+      // Every part of a type shares ONE matrix (and colour) buffer, so a type costs one GPU upload per frame, not one per part.
+      const buf = (size) => new THREE.InstancedBufferAttribute(new Float32Array(n * size), size).setUsage(THREE.DynamicDrawUsage);
+      const ty = { meshes: [], tinted: [], head: null, tail: null, n: 0, nl: 0, mat: buf(16), col: buf(3), lmat: buf(16), lcol: buf(3) };
+      const mk = (geo, material, tinted, lamp = false) => {
         const im = new THREE.InstancedMesh(geo, material, n);
-        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        im.frustumCulled = false; im.count = 0;
-        if (tinted) im.setColorAt(0, new THREE.Color(1, 1, 1));
+        im.instanceMatrix = lamp ? ty.lmat : ty.mat;
+        if (tinted) im.instanceColor = lamp ? ty.lcol : ty.col;
+        im.frustumCulled = false; im.count = 0; im.visible = false;
         scene.add(im); this.meshes.push(im);
         return im;
       };
-      const ty = { meshes: [], tinted: [], head: null, tail: null, n: 0, nl: 0 };
       if (m.real) {
         const own = REAL[type.slice(5)]?.ownLivery;
         for (const part of m.parts) { const tint = part.paint && !own; const im = mk(part.geo, part.mat, tint); ty.meshes.push(im); if (tint) ty.tinted.push(im); }
@@ -430,8 +432,8 @@ export class Traffic {
         if (m.extra) ty.meshes.push(mk(m.extra, extraMat));
       }
       // head/tail lamps are cheap and stay visible much further than the bodies, so traffic never pops in the dark
-      ty.head = mk(m.head, headMat);
-      ty.tail = mk(m.tail, tailMat, true);
+      ty.head = mk(m.head, headMat, false, true);
+      ty.tail = mk(m.tail, tailMat, true, true);
       ty.nl = 0;
       this.types.push(ty);
       const isBus = isBusType(type), isTw = m.real ? !!REAL[type.slice(5)]?.ride : m.tint === true;
@@ -687,7 +689,8 @@ export class Traffic {
     if (!this.enabled) return;
     // Race clock (small t): replay deterministically from T0 so all players see the same traffic. Menu: free-run.
     const raceClock = t < 7200;
-    if (this.ts === undefined || (raceClock && (t < this.ts - 0.5 || t > this.ts + 30)) || (!raceClock && Math.abs(t - this.ts) > 30)) {
+    // small backward clock corrections just wait; only a real jump (new race, long pause) replays from T0
+    if (this.ts === undefined || (raceClock && (t < this.ts - 3 || t > this.ts + 30)) || (!raceClock && Math.abs(t - this.ts) > 30)) {
       this.resetSim();
       if (!raceClock) this.ts = t;
     }
@@ -747,18 +750,20 @@ export class Traffic {
       this._p.set(c.x, c.y + 0.02, c.z);
       this._m.compose(this._p, this._q, this._s);
       const ty = c.ty, ls = ty.nl++;
-      ty.head.setMatrixAt(ls, this._m); ty.tail.setMatrixAt(ls, this._m);
-      ty.tail.setColorAt(ls, col.setRGB(brake, brake, brake));
+      this._m.toArray(ty.lmat.array, ls * 16);
+      col.setRGB(brake, brake, brake).toArray(ty.lcol.array, ls * 3);
       if (d2 > R2) continue;
       const slot = ty.n++;
-      for (const im of ty.meshes) im.setMatrixAt(slot, this._m);
-      for (const im of ty.tinted) im.setColorAt(slot, c.col);
+      this._m.toArray(ty.mat.array, slot * 16);
+      c.col.toArray(ty.col.array, slot * 3);
       if (!c.knocked) this.beams.setMatrixAt(nBeam++, this._m);
     }
+    const upload = (a, n) => { if (n) { a.addUpdateRange(0, n * a.itemSize); a.needsUpdate = true; } };
     for (const ty of this.types) {
-      for (const im of ty.meshes) { im.count = ty.n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
-      for (const im of [ty.head, ty.tail]) { im.count = ty.nl; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+      for (const im of ty.meshes) { im.count = ty.n; im.visible = ty.n > 0; }
+      ty.head.count = ty.tail.count = ty.nl; ty.head.visible = ty.tail.visible = ty.nl > 0;
+      upload(ty.mat, ty.n); upload(ty.col, ty.tinted.length ? ty.n : 0); upload(ty.lmat, ty.nl); upload(ty.lcol, ty.nl);
     }
-    this.beams.count = nBeam; this.beams.instanceMatrix.needsUpdate = true;
+    this.beams.count = nBeam; this.beams.visible = nBeam > 0; upload(this.beams.instanceMatrix, nBeam);
   }
 }
