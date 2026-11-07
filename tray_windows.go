@@ -265,10 +265,14 @@ func extractAndLoadIcon() windows.Handle {
 
 func createCustomFont(size int32, weight int32) windows.Handle {
 	fontName, _ := windows.UTF16PtrFromString("Segoe UI")
+	h := -size
+	if size < 0 {
+		h = size
+	}
 	hFont, _, _ := pCreateFont.Call(
-		uintptr(size), 0, 0, 0,
+		uintptr(h), 0, 0, 0,
 		uintptr(weight),
-		0, 0, 0, 1, 0, 0, 0, 0,
+		0, 0, 0, 1, 0, 0, 5, 0,
 		uintptr(unsafe.Pointer(fontName)),
 	)
 	return windows.Handle(hFont)
@@ -359,7 +363,7 @@ func showTrayMenu(hwnd windows.Handle) {
 	pAppendMenu.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 
 	startStr, _ := windows.UTF16PtrFromString("▶  Start Server")
-	stopStr, _ := windows.UTF16PtrFromString("⏹  Stop Server")
+	stopStr, _ := windows.UTF16PtrFromString("■  Stop Server")
 
 	if appServer != nil && appServer.IsRunning() {
 		pAppendMenu.Call(hMenu, uintptr(MF_STRING|MF_GRAYED), uintptr(ID_TRAY_START), uintptr(unsafe.Pointer(startStr)))
@@ -371,7 +375,7 @@ func showTrayMenu(hwnd windows.Handle) {
 
 	pAppendMenu.Call(hMenu, uintptr(MF_SEPARATOR), 0, 0)
 
-	exitStr, _ := windows.UTF16PtrFromString("❌ Exit LAN Racer")
+	exitStr, _ := windows.UTF16PtrFromString("✕  Exit LAN Racer")
 	pAppendMenu.Call(hMenu, uintptr(MF_STRING), uintptr(ID_TRAY_EXIT), uintptr(unsafe.Pointer(exitStr)))
 
 	var pt POINT
@@ -592,7 +596,7 @@ func RunDesktopApp(srv *ServerManager) {
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(windowTitle)),
 		WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,
-		150, 150, 520, 420,
+		150, 150, 545, 430,
 		0, 0,
 		uintptr(inst),
 		0,
@@ -603,9 +607,9 @@ func RunDesktopApp(srv *ServerManager) {
 		select {}
 	}
 
-	appFont = createCustomFont(16, 400)
-	appFontBold = createCustomFont(18, 700)
-	hFontHeader := createCustomFont(22, 700)
+	appFont = createCustomFont(13, 400)
+	appFontBold = createCustomFont(14, 700)
+	hFontHeader := createCustomFont(20, 700)
 
 	btnCls, _ := windows.UTF16PtrFromString("BUTTON")
 	staticCls, _ := windows.UTF16PtrFromString("STATIC")
@@ -629,36 +633,36 @@ func RunDesktopApp(srv *ServerManager) {
 	}
 
 	// Header
-	hHeader := createCtrl(staticCls, "🏎️  LAN RACER 3D", SS_LEFT, 25, 20, 300, 30, 0)
+	hHeader := createCtrl(staticCls, "🏎️  LAN RACER 3D", SS_LEFT, 20, 20, 300, 30, 0)
 	pSendMessage.Call(uintptr(hHeader), WM_SETFONT, uintptr(hFontHeader), 1)
 
-	createCtrl(staticCls, "Local Network Multiplayer Racing Server", SS_LEFT, 25, 52, 450, 20, 0)
+	createCtrl(staticCls, "Local Network Multiplayer Racing Server", SS_LEFT, 20, 52, 450, 20, 0)
 
 	// Status Box
-	hStatusLabel = createCtrl(staticCls, "● STATUS: RUNNING (Port 8080)", SS_LEFT, 25, 85, 450, 26, 0)
+	hStatusLabel = createCtrl(staticCls, "● STATUS: RUNNING (Port 8080)", SS_LEFT, 20, 85, 450, 26, 0)
 	pSendMessage.Call(uintptr(hStatusLabel), WM_SETFONT, uintptr(appFontBold), 1)
 
 	// Port configuration
-	createCtrl(staticCls, "Port:", SS_LEFT, 25, 125, 45, 24, 0)
-	hPortEdit = createCtrl(editCls, srv.Port(), WS_BORDER, 75, 122, 70, 24, ID_EDIT_PORT)
+	createCtrl(staticCls, "Port:", SS_LEFT, 20, 125, 45, 24, 0)
+	hPortEdit = createCtrl(editCls, srv.Port(), WS_BORDER, 70, 122, 75, 24, ID_EDIT_PORT)
 
 	// Address Displays
-	hLocalLabel = createCtrl(staticCls, "Local: http://localhost:8080", SS_LEFT, 25, 160, 330, 24, 0)
-	hBtnOpen = createCtrl(btnCls, "Open Game", BS_PUSHBUTTON, 365, 155, 115, 28, ID_BTN_OPEN)
+	hLocalLabel = createCtrl(staticCls, "Local: http://localhost:8080", SS_LEFT, 20, 160, 355, 24, 0)
+	hBtnOpen = createCtrl(btnCls, "Open Game", BS_PUSHBUTTON, 385, 155, 130, 28, ID_BTN_OPEN)
 
-	hLanLabel = createCtrl(staticCls, "LAN: Fetching network addresses...", SS_LEFT, 25, 198, 330, 24, 0)
-	hBtnCopyLan = createCtrl(btnCls, "Copy Link", BS_PUSHBUTTON, 365, 193, 115, 28, ID_BTN_COPY_LAN)
+	hLanLabel = createCtrl(staticCls, "LAN: Fetching network addresses...", SS_LEFT, 20, 198, 355, 24, 0)
+	hBtnCopyLan = createCtrl(btnCls, "Copy Link", BS_PUSHBUTTON, 385, 193, 130, 28, ID_BTN_COPY_LAN)
 
 	// Explanation
-	createCtrl(staticCls, "Share your LAN address with friends on the same Wi-Fi network to play together!", SS_LEFT, 25, 235, 460, 20, 0)
+	createCtrl(staticCls, "Share your LAN address with friends on the same Wi-Fi network to play together!", SS_LEFT, 20, 235, 495, 20, 0)
 
 	// Server Action Buttons
-	hBtnStart = createCtrl(btnCls, "▶  Start Server", BS_DEFPUSHBUTTON, 25, 275, 140, 36, ID_BTN_START)
-	hBtnStop = createCtrl(btnCls, "⏹  Stop Server", BS_PUSHBUTTON, 180, 275, 140, 36, ID_BTN_STOP)
-	createCtrl(btnCls, "🗕  Minimize to Tray", BS_PUSHBUTTON, 335, 275, 145, 36, ID_BTN_TRAY)
+	hBtnStart = createCtrl(btnCls, "▶ Start Server", BS_PUSHBUTTON, 20, 275, 165, 36, ID_BTN_START)
+	hBtnStop = createCtrl(btnCls, "■ Stop Server", BS_PUSHBUTTON, 195, 275, 150, 36, ID_BTN_STOP)
+	createCtrl(btnCls, "Minimize to Tray", BS_PUSHBUTTON, 355, 275, 160, 36, ID_BTN_TRAY)
 
 	// Exit Button
-	createCtrl(btnCls, "❌  Exit Application", BS_PUSHBUTTON, 25, 325, 455, 32, ID_BTN_EXIT)
+	createCtrl(btnCls, "✕  Exit Application", BS_PUSHBUTTON, 20, 325, 495, 32, ID_BTN_EXIT)
 
 	// Subscribe to server changes
 	srv.OnStatusChange(func(b bool) {

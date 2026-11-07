@@ -7,6 +7,14 @@
 
 A multiplayer 3D racing game for local networks with real Indian roads, SRTM elevation profiles, traffic simulation, vehicle models, standalone desktop GUI & system tray controls. A small Go server hosts the game; players join from any browser on the same network.
 
+## Screenshots
+
+<p align="center">
+  <img src="assets/game-splash.png" alt="LAN Racer 3D Retro Synthwave Game View" width="85%" />
+  <br/><br/>
+  <img src="assets/control-app.png" alt="LAN Racer 3D Standalone Desktop Control App" width="60%" />
+</p>
+
 ## Standalone Desktop App & Server Controls
 
 LAN Racer 3D can be run as a standalone desktop application with a native control window and system tray support:
