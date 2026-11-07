@@ -2,15 +2,33 @@
 
 A multiplayer browser racing game for local networks. A small Go server hosts the game; players join from any browser on the same network.
 
-## Run
+## Standalone Desktop App & Server Controls
 
-```
-go build -o lan-racer . && ./lan-racer
-```
+LAN Racer 3D can be run as a standalone desktop application with a native control window and system tray support:
 
-Or use `./start.sh` (builds if needed, starts the server in the background and opens the game) and `./stop.sh` to shut it down.
+- **Windows (`lan-racer.exe`)**:
+  - Double-click to launch directly into the standalone control window and system tray.
+  - Controls: **Start Server**, **Stop Server**, **Open Game in Browser**, **Copy LAN Link**, **Minimize to Tray**, and **Exit**.
+  - Closing [X] or minimizing hides the window to the Windows System Tray (Taskbar notification area) so active games aren't interrupted.
+  - Double-clicking the tray icon restores the window; right-clicking opens a context menu with full controls.
+  - Supports CLI / headless mode via `--cli` or `--headless` (e.g. `.\lan-racer.exe --cli --addr :8080`).
 
-Open `http://localhost:8080` on the host machine; other players use one of the LAN addresses the server prints. All assets are bundled, so no internet connection is needed.
+- **Debian / Ubuntu (`.deb`)**:
+  - Install with: `sudo apt install ./lan-racer_1.0.0_amd64.deb` or `sudo dpkg -i lan-racer_1.0.0_amd64.deb`
+  - Installs `/usr/bin/lan-racer`, adds a desktop menu entry under Games, and integrates with the desktop system tray / AppIndicator.
+
+### Build Binaries
+
+To build the standalone Windows executable, Linux binary, and Debian `.deb` package:
+
+- On Windows (PowerShell):
+  ```powershell
+  .\build.ps1
+  ```
+- On Linux (Bash):
+  ```bash
+  chmod +x build.sh && ./build.sh
+  ```
 
 ## Maps
 
