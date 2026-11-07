@@ -1,6 +1,11 @@
 # LAN Racer 3D
 
-A multiplayer browser racing game for local networks. A small Go server hosts the game; players join from any browser on the same network.
+[![Latest Release](https://img.shields.io/github/v/release/kmvishn/lan-race?style=flat-square&color=blue&logo=github)](https://github.com/kmvishn/lan-race/releases/latest)
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![Platforms](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Debian-4EAA25?style=flat-square)](https://github.com/kmvishn/lan-race/releases/latest)
+[![Three.js](https://img.shields.io/badge/Three.js-r160-black?style=flat-square&logo=threedotjs&logoColor=white)](https://threejs.org/)
+
+A multiplayer 3D racing game for local networks with real Indian roads, SRTM elevation profiles, traffic simulation, vehicle models, standalone desktop GUI & system tray controls. A small Go server hosts the game; players join from any browser on the same network.
 
 ## Standalone Desktop App & Server Controls
 
