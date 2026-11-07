@@ -9,10 +9,21 @@ A multiplayer 3D racing game for local networks with real Indian roads, SRTM ele
 
 ## Screenshots
 
+### Standalone Desktop App & Server Controls
 <p align="center">
-  <img src="assets/game-splash.png" alt="LAN Racer 3D Retro Synthwave Game View" width="85%" />
-  <br/><br/>
   <img src="assets/control-app.png" alt="LAN Racer 3D Standalone Desktop Control App" width="60%" />
+</p>
+
+### 3D Multiplayer Lobby & Garage Showroom
+| Porsche 911 Carrera S | BMW M3 GTR |
+|:---:|:---:|
+| <img src="assets/garage-porsche-911.jpg" alt="Porsche 911 Carrera S" width="100%" /> | <img src="assets/garage-bmw-m3-gtr.jpg" alt="BMW M3 GTR" width="100%" /> |
+| **KTM 390 Duke (Motorcycle)** | **Tata LPT (Heavy Truck)** |
+| <img src="assets/garage-ktm-390-duke.jpg" alt="KTM 390 Duke" width="100%" /> | <img src="assets/garage-tata-truck.jpg" alt="Tata LPT Truck" width="100%" /> |
+
+### Retro Synthwave Intro
+<p align="center">
+  <img src="assets/game-splash.png" alt="LAN Racer 3D Retro Synthwave Splash" width="85%" />
 </p>
 
 ## Standalone Desktop App & Server Controls
