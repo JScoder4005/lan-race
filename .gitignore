@@ -1,4 +1,10 @@
 lan-racer
+lan-racer.exe
+lan-racer-linux
+*.deb
+dist/
 __pycache__/
 lan-racer.log
 .lan-racer.pid
+scripts/node_modules/
+scripts/package-lock.json

@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, HW } from './track.js';
-import { gltfLoader, normalizeVehicle, autoWheels, riderGeometry, MAT } from './cars.js';
+import { gltfLoader, normalizeVehicle, autoWheels, riderGeometry, riderParts, loadRider, recolorMaterials, sanitizeMaterials, MAT } from './cars.js';
 import { collide } from './physics.js';
 import { FONTS } from './themes.js';
+import { cityBus } from './citybus.js';
 
 const KENNEY_SCALE = 1.8; // kit is toy-scale (~2.5m sedans)
 const KENNEY = ['sedan', 'taxi', 'suv', 'suv-luxury', 'van', 'truck', 'delivery', 'garbage-truck', 'ambulance', 'sedan-sports', 'hatchback-sports', 'firetruck'];
@@ -48,6 +49,7 @@ const MIX = {
   kannur: { tw: 0.55, car: 0.25, auto: 0.08, bus: 0.06, truck: 0.06, density: 10 },
   hyderabad: { tw: 0.57, car: 0.17, auto: 0.17, bus: 0.06, truck: 0.03, density: 13 },
   wayanad: { tw: 0.18, car: 0.42, auto: 0.03, bus: 0.10, truck: 0.27, density: 8 },
+  kolar: { tw: 0.62, car: 0.22, auto: 0.06, bus: 0.03, truck: 0.07, density: 4 }, // quiet village road: no published counts, a guess
 };
 const DT = 0.1, T0 = -12; // fixed sim step; every client replays the same deterministic sim from T0 on the race clock
 function mulberry(seed) {
@@ -59,16 +61,26 @@ const KIND_MODELS = { sedan: ['sedan'], suv: ['suv', 'suv-luxury'], hatch: ['hat
 
 // Bus liveries: operator lettering, colours and real route boards per city.
 const LIVERY = {
-  bmtc: { top: '#a6d36a', bottom: '#1f6e2e', stripe: '#f2c200', name: 'BMTC', local: 'ಬೆಂಗಳೂರು ಮಹಾನಗರ ಸಾರಿಗೆ ಸಂಸ್ಥೆ', lang: 'kn', routes: ['500D HEBBAL', '500DA KR PURAM', '500K KADUGODI', '290E MAJESTIC'] },
-  'bmtc-blue': { top: '#eef3f7', bottom: '#2a6fb5', stripe: '#7fd0e8', name: 'BMTC', local: 'ಬೆಂಗಳೂರು ಮಹಾನಗರ ಸಾರಿಗೆ ಸಂಸ್ಥೆ', lang: 'kn', routes: ['500D HEBBAL', '500DA KR PURAM', '500K KADUGODI', '290E MAJESTIC'] },
-  vajra: { top: '#f4f6f8', bottom: '#1f4fbf', stripe: '#7fb2ff', name: 'VAJRA · BMTC', local: 'ವಜ್ರ', lang: 'kn', routes: ['V-500D HEBBAL', 'V-500CA SILK BOARD', 'KIA-9 AIRPORT'] },
-  'ksrtc-ka': { top: '#e9e9e9', bottom: '#c4161c', stripe: '#f2a800', name: 'KSRTC', local: 'ಕರ್ನಾಟಕ ರಾಜ್ಯ ರಸ್ತೆ ಸಾರಿಗೆ ನಿಗಮ', lang: 'kn', routes: ['201 CHAMUNDI HILLS', '150 CBS', '303 KRS DAM'] },
+  // BMTC: Sarige ordinary in light blue/white (BS-VI) and the older dark blue/white, Vajra AC light blue (Volvo),
+  // electric Astra buses in turquoise (JBM) or violet/white (Switch)
+  bmtc: { top: '#f4f7fa', bottom: '#2f8fdc', stripe: '#1a5aa8', name: 'BMTC', local: 'ಬೆಂಗಳೂರು ಮಹಾನಗರ ಸಾರಿಗೆ ಸಂಸ್ಥೆ', lang: 'kn', routes: ['500D HEBBAL', '500DA KR PURAM', '500K KADUGODI', '290E MAJESTIC'] },
+  'bmtc-blue': { top: '#eef2f6', bottom: '#1d3f9a', stripe: '#7fb6e8', name: 'BMTC', local: 'ಬೆಂಗಳೂರು ಮಹಾನಗರ ಸಾರಿಗೆ ಸಂಸ್ಥೆ', lang: 'kn', routes: ['500D HEBBAL', '500DA KR PURAM', '500K KADUGODI', '290E MAJESTIC'] },
+  vajra: { top: '#5fb4ea', bottom: '#2c86cf', stripe: '#ffffff', name: 'VAJRA', local: 'ವಜ್ರ · BMTC', lang: 'kn', ac: true, routes: ['V-500D HEBBAL', 'V-500CA SILK BOARD', 'KIA-9 AIRPORT'] },
+  'bmtc-ev': { top: '#f2f6f7', bottom: '#16b0a6', stripe: '#0d7f78', name: 'BMTC', local: 'ಎಲೆಕ್ಟ್ರಿಕ್ · ELECTRIC', lang: 'kn', ac: true, routes: ['500D HEBBAL', 'MF-1 METRO FEEDER', '500DA KR PURAM'] },
+  'bmtc-ev2': { top: '#f4f2f8', bottom: '#6f3fa8', stripe: '#b39ad8', name: 'BMTC', local: 'ಎಲೆಕ್ಟ್ರಿಕ್ · ELECTRIC', lang: 'kn', ac: true, routes: ['500D HEBBAL', '290E MAJESTIC'] },
+  // KSRTC Mysuru city: moving to sky blue/white from the older green and light red
+  'ksrtc-ka': { top: '#f4f7fa', bottom: '#3fa4e0', stripe: '#1e6fb0', name: 'KSRTC', local: 'ನಗರ ಸಾರಿಗೆ · MYSURU', lang: 'kn', routes: ['201 CHAMUNDI HILLS', '150 CBS', '303 KRS DAM'] },
+  'ksrtc-ka-old': { top: '#e8f0e4', bottom: '#2f8f3e', stripe: '#e05a5a', name: 'KSRTC', local: 'ನಗರ ಸಾರಿಗೆ · MYSURU', lang: 'kn', routes: ['201 CHAMUNDI HILLS', '150 CBS', '303 KRS DAM'] },
   'ksrtc-kl': { top: '#f2d23a', bottom: '#c41c1c', stripe: '#1a1a1a', name: 'KSRTC', local: 'കെ.എസ്.ആർ.ടി.സി', lang: 'ml', routes: ['FAST KOZHIKODE', 'KALPETTA', 'THALASSERY', 'VYTTILA', 'KOVALAM', 'EAST FORT'] },
   private: { top: '#ffffff', bottom: '#2a7de1', stripe: '#ff3d7f', name: 'SREE KRISHNA', local: 'ശ്രീ കൃഷ്ണ', lang: 'ml', routes: ['KANNUR', 'IRITTY', 'ALUVA', 'FORT KOCHI', 'VIZHINJAM'] },
+  // MTC: ordinary brown and cream, deluxe red
   mtc: { top: '#efe2c0', bottom: '#6e3b1f', stripe: '#f2c200', name: 'MTC', local: 'மாநகர் போக்குவரத்துக் கழகம்', lang: 'ta', routes: ['23C BESANT NAGAR', '12B T.NAGAR', '5B BROADWAY'] },
+  'mtc-deluxe': { top: '#f2ece6', bottom: '#b51f24', stripe: '#3a3a3a', name: 'MTC', local: 'மாநகர் போக்குவரத்துக் கழகம்', lang: 'ta', routes: ['23C BESANT NAGAR', '21G TAMBARAM', 'M70 ADYAR'] },
   tgsrtc: { top: '#f4f6f8', bottom: '#1e8a3a', stripe: '#d62828', name: 'TGSRTC', local: 'తెలంగాణ ఆర్టీసీ', lang: 'te', routes: ['1Z SECUNDERABAD', '8A AFZALGUNJ', '49M KOTI'] },
+  'tgsrtc-ev': { top: '#eef6f0', bottom: '#2a9d5c', stripe: '#1f5fbf', name: 'TGSRTC', local: 'ఈ-మెట్రో · E-METRO', lang: 'te', ac: true, routes: ['1Z SECUNDERABAD', '127K KONDAPUR', '8A AFZALGUNJ'] },
 };
-const CITY_BUSES = { bengaluru: ['bmtc-blue', 'bmtc', 'vajra'], mysuru: ['ksrtc-ka'], chennai: ['mtc'], hyderabad: ['tgsrtc'],
+const CITY_BUSES = { bengaluru: ['bmtc', 'bmtc', 'bmtc-blue', 'vajra', 'bmtc-ev', 'bmtc-ev2'], mysuru: ['ksrtc-ka', 'ksrtc-ka', 'ksrtc-ka-old'], kolar: ['ksrtc-ka'], chennai: ['mtc', 'mtc', 'mtc-deluxe'],
+  hyderabad: ['tgsrtc', 'tgsrtc', 'tgsrtc-ev'],
   wayanad: ['ksrtc-kl'], kannur: ['ksrtc-kl', 'private', 'private'], kochi: ['ksrtc-kl', 'private'], trivandrum: ['ksrtc-kl', 'private'] };
 // Destination boards that make sense on each route.
 const CITY_ROUTES = {
@@ -132,42 +144,47 @@ function bake(gltf) {
 // Real Indian traffic (Sketchfab CC models, scripts/fetch-vehicles.py): length (m) to scale to, mass (kg), rider pose.
 const REAL = {
   swift: { len: 3.86, mass: 920 }, dzire: { len: 3.995, mass: 960 }, baleno: { len: 3.99, mass: 935 }, city: { len: 4.58, mass: 1110 },
-  creta: { len: 4.33, mass: 1350 }, scorpio: { len: 4.46, mass: 1900 }, innova: { len: 4.75, mass: 1750 }, wagonr: { len: 3.66, mass: 850, yaw: 180 },
-  bolero: { len: 3.995, mass: 1600 }, ertiga: { len: 4.4, mass: 1150 }, punch: { len: 3.83, mass: 1030 }, i20: { len: 3.995, mass: 1080 },
+  creta: { len: 4.33, mass: 1350 }, scorpio: { len: 4.46, mass: 1900 }, innova: { len: 4.585, mass: 1700, yaw: 180 }, wagonr: { len: 3.66, mass: 850, yaw: 180 },
+  bolero: { len: 3.995, mass: 1600 }, ertiga: { len: 4.4, mass: 1150 }, punch: { len: 3.83, mass: 1030 },
   seltos: { len: 4.365, mass: 1350 }, xuv3xo: { len: 3.99, mass: 1360 }, xuv700: { len: 4.7, mass: 1900 }, ambassador: { len: 4.33, mass: 1160 },
   eeco: { len: 3.68, mass: 940 }, fz: { len: 1.99, mass: 210, ride: 'naked', yaw: 180 }, rx100: { len: 1.93, mass: 180, ride: 'naked' },
-  jupiter: { len: 1.85, mass: 185, ride: 'scooter' }, tataace: { len: 3.8, mass: 1600, vmax: 15 }, tata407: { len: 5.6, mass: 5000 },
+  tataace: { len: 3.8, mass: 1600, vmax: 15 },
   eicher: { len: 7.0, mass: 9000 }, tractor: { len: 3.7, mass: 2500, vmax: 7 },
   activa: { len: 1.83, mass: 180, ride: 'scooter', yaw: 180 }, scooter125: { len: 1.87, mass: 180, ride: 'scooter', yaw: 180 }, olaev: { len: 1.86, mass: 190, ride: 'scooter' },
   deliveryev: { len: 1.8, mass: 200, ride: 'scooter' }, pulsar: { len: 2.06, mass: 220, ride: 'naked' }, apache: { len: 2.08, mass: 215, ride: 'naked' },
-  classic350: { len: 2.15, mass: 270, ride: 'cruiser' },
-  auto: { len: 2.63, mass: 450, yaw: 180 }, viking: { len: 11.0, mass: 12000 }, citybus: { len: 11.0, mass: 12000, yaw: 180 }, keralabus: { len: 9.5, mass: 11000, ownLivery: true, yaw: 180 }, ksrtc: { len: 11.0, mass: 12000, ownLivery: true },
+  auto: { len: 2.63, mass: 450, yaw: 180 }, viking: { len: 11.0, mass: 12000 }, citybus: { len: 11.0, mass: 12000, yaw: 180 }, keralabus: { len: 9.5, mass: 11000, ownLivery: true, yaw: 180 }, keralabus2: { len: 10.5, mass: 11500, ownLivery: true }, ksrtc: { len: 11.0, mass: 12000, ownLivery: true },
   tatatruck: { len: 7.5, mass: 10000, yaw: 180 }, tatalorry: { len: 7.4, mass: 10000 },
+  fortuner: { len: 4.795, mass: 2135, recolor: { BrakeRotors1: 0x141414 } }, camry: { len: 4.885, mass: 1665 }, landcruiser: { len: 4.95, mass: 2700 },
+  eclass: { len: 4.88, mass: 1800, flip: true }, bmw7: { len: 5.08, mass: 1900 }, x5: { len: 4.85, mass: 2185 }, a6: { len: 4.94, mass: 1700 },
 };
 // Shares of new sales (FY25-26, SIAM data) decide which real models appear.
-const CAR_SHARE = { dzire: 4.9, swift: 4.0, wagonr: 3.9, baleno: 3.7, creta: 4.4, scorpio: 3.9, ertiga: 4.3, punch: 4.0, i20: 2.5, seltos: 2.6,
-  xuv3xo: 2.0, xuv700: 2.0, city: 1.6, bolero: 2.5, eeco: 2.2, ambassador: 0.3 };
-const TW_SHARE = { activa: 26, jupiter: 11, scooter125: 8, pulsar: 18, apache: 8, fz: 6, rx100: 1, olaev: 6, deliveryev: 6 };
+const CAR_SHARE = { dzire: 4.9, swift: 4.0, wagonr: 3.9, baleno: 3.7, creta: 4.4, scorpio: 3.9, ertiga: 4.3, punch: 4.0, seltos: 2.6,
+  xuv3xo: 2.0, xuv700: 2.0, city: 1.6, bolero: 2.5, eeco: 2.2, ambassador: 0.3,
+  innova: 1.5, fortuner: 1.1, camry: 0.3, landcruiser: 0.15, eclass: 0.35, bmw7: 0.12, x5: 0.2, a6: 0.25 }; // luxury: well under 2% of sales
+const TW_SHARE = { activa: 26, scooter125: 8, pulsar: 18, apache: 8, fz: 6, rx100: 1, olaev: 6, deliveryev: 6 };
 // Goods vehicles: mini trucks dominate city deliveries, heavy lorries the highways (and the ghat after 8 pm).
-const TRUCK_SHARE = { tataace: 5, tata407: 2, eicher: 2, tatatruck: 2, tatalorry: 2, tractor: 1 };
+const TRUCK_SHARE = { tataace: 5, eicher: 2, tatatruck: 2, tatalorry: 2, tractor: 1 };
 // Local flavour per route, multiplied onto the shares above.
 const LOCAL = {
-  bengaluru: { olaev: 2, deliveryev: 2, seltos: 1.5, xuv700: 1.5, ambassador: 0, tractor: 0 },
-  chennai: { tractor: 0, i20: 1.5, ambassador: 0.5 },
+  bengaluru: { olaev: 2, deliveryev: 2, seltos: 1.5, xuv700: 1.5, ambassador: 0, tractor: 0, eclass: 1.8, bmw7: 1.8, x5: 1.8, a6: 1.8 },
+  chennai: { tractor: 0, ambassador: 0.5 },
   mysuru: { tractor: 1, tataace: 1.5, bolero: 1.5, olaev: 0.6, deliveryev: 0.4 },
-  wayanad: { bolero: 4, scorpio: 2, xuv700: 2, eeco: 1.5, tatatruck: 3, tatalorry: 3, eicher: 2, tataace: 1, deliveryev: 0, olaev: 0.3, ambassador: 1.5 },
-  kannur: { tractor: 0, ambassador: 4, ertiga: 1.5, tatatruck: 1.5, tatalorry: 1.5 },
-  kochi: { tractor: 0, ambassador: 3, ertiga: 1.5, olaev: 1.3 },
-  trivandrum: { tractor: 0, ambassador: 4, ertiga: 1.5 },
-  hyderabad: { tractor: 0, ambassador: 0, i20: 1.3 },
+  kolar: { tractor: 3, tataace: 2, bolero: 2, olaev: 0.3, deliveryev: 0 },
+  wayanad: { bolero: 4, scorpio: 2, xuv700: 2, fortuner: 2, eeco: 1.5, tatatruck: 3, tatalorry: 3, eicher: 2, tataace: 1, deliveryev: 0, olaev: 0.3, ambassador: 1.5 },
+  kannur: { tractor: 0, ambassador: 4, ertiga: 1.5, tatatruck: 1.5, tatalorry: 1.5, innova: 2.5, fortuner: 2 }, // Gulf money: Innovas and Fortuners everywhere
+  kochi: { tractor: 0, ambassador: 3, ertiga: 1.5, olaev: 1.3, innova: 2.5, fortuner: 2, landcruiser: 2.5, eclass: 1.5, bmw7: 1.5 },
+  trivandrum: { tractor: 0, ambassador: 4, ertiga: 1.5, innova: 2.5, fortuner: 2 },
+  hyderabad: { tractor: 0, ambassador: 0, fortuner: 1.5, landcruiser: 1.5 },
 };
 // Indian car colour popularity: white dominates, then silver/grey.
 const CAR_COLOURS = [[0xf2f2f0, 40], [0xb9bcc2, 18], [0x5d6168, 10], [0x9a1b1b, 8], [0x1d3a6e, 8], [0x16171a, 8], [0x6b4a32, 4], [0xd8c9a8, 4]];
 const riderMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
 
 function bakeReal(gltf, cfg) {
-  const wheels = autoWheels(gltf.scene, { kind: cfg.ride ? 'bike' : 'car' });
+  const wheels = autoWheels(gltf.scene, { kind: cfg.ride ? 'bike' : 'car', flip: cfg.flip });
   const { norm, dims } = normalizeVehicle(gltf.scene, wheels || [], 1, cfg.len, cfg.yaw || 0);
+  sanitizeMaterials(norm);
+  recolorMaterials(norm, cfg.recolor);
   norm.updateMatrixWorld(true);
   const groups = new Map();
   norm.traverse((o) => {
@@ -186,68 +203,49 @@ function bakeReal(gltf, cfg) {
     groups.get(m.uuid).geos.push(g);
   });
   const parts = [...groups.values()].map(({ mat, geos }) => ({ geo: mergeGeometries(geos), mat, paint: MAT.paint.test(mat.name || '') && !MAT.skip.test(mat.name || '') }));
-  if (cfg.ride) parts.push({ geo: riderGeometry(dims, cfg.ride), mat: riderMat, paint: true });
+  if (cfg.ride) { // the real rider (helmet takes the instance colour), or the low-poly one without the model
+    const rp = riderParts(dims, cfg.ride);
+    if (rp) for (const p of rp) parts.push({ geo: p.geo, mat: p.mat, paint: p.helmet });
+    else parts.push({ geo: riderGeometry(dims, cfg.ride), mat: riderMat, paint: true });
+  }
   const l = lightsGeo(dims);
   return { parts, dims, head: l.head, tail: l.tail, real: true, mass: cfg.mass };
 }
 
-export async function loadTrafficModels() {
+// Full-detail versions (the player-car files) for close-up traffic, loaded in the background after a map is ready.
+const nearCache = {};
+// Traffic models are used by every map, so they stay on the GPU for the whole session (disposeCity skips anything
+// marked shared) and their vertex/pixel data can leave JS memory once uploaded.
+function markShared(m) {
+  for (const g of [m.geo, m.head, m.tail, m.extra, ...(m.parts || []).map((p) => p.geo)]) if (g) g.userData.shared = true;
+  for (const mat of [m.mat, ...(m.parts || []).map((p) => p.mat)]) {
+    if (!mat) continue;
+    mat.userData.shared = true;
+    for (const k in mat) if (mat[k]?.isTexture) mat[k].userData.shared = true;
+  }
+  return m;
+}
+
+export function loadNearModel(id) {
+  return (nearCache[id] ||= loadRider().then(() => gltfLoader().loadAsync(`models/vehicles/${id}.glb`)).then((g) => markShared(bakeReal(g, REAL[id]))).catch(() => null));
+}
+
+export async function loadTrafficModels(onProgress) {
   const loader = gltfLoader();
   const out = {};
   const have = await fetch('models/traffic/credits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  await loadRider();
+  const real = Object.keys(REAL).filter((id) => have[id]);
+  let done = 0;
+  const tick = () => onProgress?.(++done / (KENNEY.length + real.length));
   await Promise.all([
-    ...KENNEY.map(async (t) => { out[t] = bake(await loader.loadAsync(`models/kenney/${t}.glb`)); }),
-    ...Object.keys(REAL).filter((id) => have[id]).map(async (id) => {
-      try { out['real:' + id] = bakeReal(await loader.loadAsync(`models/traffic/${id}.glb`), REAL[id]); } catch (e) { console.warn('traffic model', id, e); }
+    ...KENNEY.map(async (t) => { out[t] = markShared(bake(await loader.loadAsync(`models/kenney/${t}.glb`))); tick(); }),
+    ...real.map(async (id) => {
+      try { out['real:' + id] = markShared(bakeReal(await loader.loadAsync(`models/traffic/${id}.glb`), REAL[id])); } catch (e) { console.warn('traffic model', id, e); }
+      tick();
     }),
   ]);
   return out;
-}
-
-function busAtlas(L) {
-  const S = 1024;
-  const [c, x] = canvas(S, S), [e, y] = canvas(S, S);
-  y.fillStyle = '#000'; y.fillRect(0, 0, S, S);
-  // side (0..320 px tall): windows band, livery, lettering
-  const side = (oy) => {
-    x.fillStyle = L.top; x.fillRect(0, oy, S, 320);
-    x.fillStyle = L.bottom; x.fillRect(0, oy + 190, S, 130);
-    x.fillStyle = L.stripe; x.fillRect(0, oy + 178, S, 14);
-    x.fillStyle = '#1b2026'; x.fillRect(40, oy + 40, S - 80, 110);
-    for (let i = 0; i < 9; i++) {
-      const wx = 60 + i * 102;
-      x.fillStyle = '#2c3640'; x.fillRect(wx, oy + 48, 92, 94);
-      y.fillStyle = Math.random() < 0.8 ? '#ffe6b0' : '#cfe6ff'; y.fillRect(wx + 4, oy + 52, 84, 86);
-      y.fillStyle = 'rgba(40,30,20,0.6)'; for (let p = 0; p < 2; p++) y.fillRect(wx + 12 + p * 38, oy + 92, 22, 46); // passengers
-    }
-    x.fillStyle = '#101418'; x.fillRect(S - 150, oy + 40, 70, 260); // door
-    x.textBaseline = 'middle';
-    x.fillStyle = '#ffffff'; x.font = '900 70px "Arial Black", Impact, sans-serif'; x.textAlign = 'left';
-    x.fillText(L.name, 50, oy + 255);
-    x.font = `700 34px ${FONTS[L.lang]}, Arial`; x.textAlign = 'right';
-    x.fillStyle = L.stripe === '#1a1a1a' ? '#f2d23a' : '#ffffff';
-    x.fillText(L.local, S - 170, oy + 255);
-  };
-  side(0);
-  // front (0..320 x, 320..640 y) and back (320..640 x)
-  for (const [ox, front] of [[0, true], [320, false]]) {
-    x.fillStyle = L.bottom; x.fillRect(ox, 320, 320, 320);
-    x.fillStyle = L.top; x.fillRect(ox, 320, 320, 140);
-    x.fillStyle = '#11161c'; x.fillRect(ox + 20, front ? 380 : 400, 280, front ? 150 : 90);
-    x.fillStyle = '#000'; x.fillRect(ox + 30, 330, 260, 40);
-    const route = L.routes[Math.floor(Math.random() * L.routes.length)];
-    y.fillStyle = '#ff9a1a'; y.font = '900 30px "Arial Black", Impact, sans-serif'; y.textAlign = 'center'; y.textBaseline = 'middle';
-    const tw = y.measureText(route).width; y.save(); y.translate(ox + 160, 351); y.scale(Math.min(1, 240 / tw), 1); y.fillText(route, 0, 0); y.restore();
-    if (front) { y.fillStyle = 'rgba(160,190,220,0.25)'; y.fillRect(ox + 20, 380, 280, 150); }
-    x.fillStyle = '#ffffff'; x.font = '900 34px "Arial Black", Impact, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.fillText(L.name.split(' ')[0], ox + 160, 600);
-  }
-  x.fillStyle = '#8c9096'; x.fillRect(640, 320, 384, 320); // roof
-  x.fillStyle = '#0d0d0d'; x.fillRect(0, 640, 64, 64);
-  const ct = tex(c), et = tex(e);
-  const R = { side: [0, 1 - 320 / S, 1, 1], front: [0, 1 - 640 / S, 320 / S, 1 - 320 / S], back: [320 / S, 1 - 640 / S, 640 / S, 1 - 320 / S],
-    roof: [640 / S, 1 - 640 / S, 1, 1 - 320 / S], dark: [0, 1 - 704 / S, 64 / S, 1 - 640 / S] };
-  return { map: ct, emissive: et, R };
 }
 
 function lorryAtlas() {
@@ -301,18 +299,10 @@ function indianModels(T, mapId) {
   M.bike = twoWheeler(false);
   // City bus with operator livery atlas; several liveries become separate types (bus, bus2, ...).
   const liveries = CITY_BUSES[mapId] || ['bmtc'];
-  [...new Set(liveries)].forEach((id, k) => {
-    const A = busAtlas({ ...LIVERY[id], routes: CITY_ROUTES[mapId]?.[id] || LIVERY[id].routes });
-    const mat = new THREE.MeshStandardMaterial({ map: A.map, emissiveMap: A.emissive, emissive: 0xffffff, emissiveIntensity: 1.3, roughness: 0.45, metalness: 0.2 });
-    const R = A.R;
-    M[k ? 'bus' + k : 'bus'] = {
-      geo: mergeGeometries([atlasBox(2.55, 2.9, 11.5, 0, 1.85, 0, [R.side, R.side, R.roof, R.dark, R.front, R.back])]),
-      extra: mergeGeometries([wheel(0.5, 0.3, 1.1, 0.5, 3.8), wheel(0.5, 0.3, -1.1, 0.5, 3.8), wheel(0.5, 0.3, 1.1, 0.5, -3.6), wheel(0.5, 0.3, -1.1, 0.5, -3.6),
-        box(2.6, 0.3, 0.3, 0, 0.5, 5.75, [0.08, 0.08, 0.08]), box(2.6, 0.3, 0.3, 0, 0.5, -5.75, [0.08, 0.08, 0.08])]),
-      head: mergeGeometries([box(0.35, 0.15, 0.05, 0.9, 0.95, 5.77, HEAD), box(0.35, 0.15, 0.05, -0.9, 0.95, 5.77, HEAD)]),
-      tail: mergeGeometries([box(0.3, 0.2, 0.05, 1.0, 1.0, -5.77, TAIL), box(0.3, 0.2, 0.05, -1.0, 1.0, -5.77, TAIL)]),
-      dims: { w: 2.55, l: 11.5 }, mat, tint: null, liveryOf: id, massKey: 'bus',
-    };
+  // repeated ids weight the mix (e.g. most BMTC buses are Sarige ordinary)
+  liveries.forEach((id, k) => {
+    M[k ? 'bus' + k : 'bus'] = { ...cityBus({ ...LIVERY[id], routes: CITY_ROUTES[mapId]?.[id] || LIVERY[id].routes }, HEAD, TAIL),
+      tint: null, liveryOf: id, massKey: 'bus' };
   });
   // Painted goods lorry
   const LA = lorryAtlas();
@@ -326,6 +316,15 @@ function indianModels(T, mapId) {
     dims: { w: 2.5, l: 7.6 }, mat: lmat, tint: null,
   };
   return M;
+}
+
+// Soft dark blob for contact shadows under traffic (rounded rectangle, blurred edges).
+function shadowTexture() {
+  const [c, x] = canvas(64, 128);
+  x.filter = 'blur(9px)';
+  x.fillStyle = 'rgba(0,0,0,0.85)';
+  x.beginPath(); x.roundRect(12, 14, 40, 100, 16); x.fill();
+  return new THREE.CanvasTexture(c);
 }
 
 function beamTexture() {
@@ -370,8 +369,8 @@ export class Traffic {
         .filter(([id, w]) => w > 0 && all['real:' + id]).map(([id, w]) => ['real:' + id, w]));
       const realCars = realOf(CAR_SHARE), realTw = realOf(TW_SHARE), realTrucks = realOf(TRUCK_SHARE);
       // Malabar (Kannur, Wayanad) runs mostly private stage buses; elsewhere state transport (KSRTC/BMTC/MTC/TGSRTC).
-      const busPool = { kannur: ['keralabus', 'keralabus', 'keralabus', 'ksrtc'], wayanad: ['keralabus', 'keralabus', 'ksrtc'] }[mapId]
-        || (T.lang === 'ml' ? ['ksrtc', 'ksrtc', 'ksrtc', 'keralabus'] : ['viking', 'citybus']);
+      const busPool = { kannur: ['keralabus', 'keralabus', 'keralabus2', 'keralabus2', 'ksrtc'], wayanad: ['keralabus', 'keralabus2', 'ksrtc'] }[mapId]
+        || (T.lang === 'ml' ? ['ksrtc', 'ksrtc', 'ksrtc', 'keralabus', 'keralabus2'] : ['viking', 'citybus']);
       const realBus = busPool.filter((id) => all['real:' + id]).map((id) => 'real:' + id);
       const has = (o) => Object.keys(o).length > 0;
       for (const dir of [1, -1]) {
@@ -382,7 +381,9 @@ export class Traffic {
           let type, lane;
           if (cls === 'tw') { type = has(realTw) ? pickW(realTw) : r() < 0.55 ? 'bike' : 'scooter'; const q = r(); lane = q < 0.6 || !four ? 'tw' : q < 0.85 ? 'between' : 'fast'; }
           else if (cls === 'auto') { type = all['real:auto'] ? 'real:auto' : 'auto'; lane = 'slow'; }
-          else if (cls === 'bus') { type = realBus.length ? realBus[Math.floor(r() * realBus.length)] : busTypes[Math.floor(r() * busTypes.length)]; lane = 'slow'; }
+          else if (cls === 'bus') { // the city's own liveried fleet, with older generic buses as a minority (Kerala: real models)
+            const own = busTypes.length && (!realBus.length || (T.lang !== 'ml' && r() < (mapId === 'bengaluru' ? 0.9 : 0.75)));
+            type = own ? busTypes[Math.floor(r() * busTypes.length)] : realBus[Math.floor(r() * realBus.length)]; lane = 'slow'; }
           else if (cls === 'truck') { type = has(realTrucks) ? pickW(realTrucks) : r() < 0.75 ? 'lorry' : 'truck'; lane = 'slow'; }
           else if (has(realCars)) { type = pickW(realCars); lane = r() < 0.65 ? 'fast' : 'slow'; }
           else { const k = pickW(carKinds); const opts = KIND_MODELS[k]; type = opts[Math.floor(r() * opts.length)]; lane = r() < 0.65 ? 'fast' : 'slow'; }
@@ -402,21 +403,25 @@ export class Traffic {
     const extraMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 });
     this.meshes = [];
     this.types = [];
+    this.byType = {};
+    this.scene = scene;
     const busCols = (CITY_BUSES[mapId] || ['bmtc']).filter((id) => id !== 'private').map((id) => LIVERY[id].bottom);
     const pickCol = (list) => { let x = r() * list.reduce((a, q) => a + q[1], 0); for (const [c, w] of list) { x -= w; if (x <= 0) return c; } return list[0][0]; };
     let total = 0;
     for (const type in byType) {
       const list = byType[type], m = all[type], n = list.length;
       // Only vehicles near the camera are drawn: instance slots are refilled every frame (see update).
-      const mk = (geo, material, tinted) => {
+      // Every part of a type shares ONE matrix (and colour) buffer, so a type costs one GPU upload per frame, not one per part.
+      const buf = (size) => new THREE.InstancedBufferAttribute(new Float32Array(n * size), size).setUsage(THREE.DynamicDrawUsage);
+      const ty = { meshes: [], tinted: [], head: null, tail: null, n: 0, nl: 0, mat: buf(16), col: buf(3), lmat: buf(16), lcol: buf(3), cap: n, type, near: null };
+      const mk = (geo, material, tinted, lamp = false) => {
         const im = new THREE.InstancedMesh(geo, material, n);
-        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        im.frustumCulled = false; im.count = 0;
-        if (tinted) im.setColorAt(0, new THREE.Color(1, 1, 1));
+        im.instanceMatrix = lamp ? ty.lmat : ty.mat;
+        if (tinted) im.instanceColor = lamp ? ty.lcol : ty.col;
+        im.frustumCulled = false; im.count = 0; im.visible = false;
         scene.add(im); this.meshes.push(im);
         return im;
       };
-      const ty = { meshes: [], tinted: [], head: null, tail: null, n: 0, nl: 0 };
       if (m.real) {
         const own = REAL[type.slice(5)]?.ownLivery;
         for (const part of m.parts) { const tint = part.paint && !own; const im = mk(part.geo, part.mat, tint); ty.meshes.push(im); if (tint) ty.tinted.push(im); }
@@ -430,10 +435,11 @@ export class Traffic {
         if (m.extra) ty.meshes.push(mk(m.extra, extraMat));
       }
       // head/tail lamps are cheap and stay visible much further than the bodies, so traffic never pops in the dark
-      ty.head = mk(m.head, headMat);
-      ty.tail = mk(m.tail, tailMat, true);
+      ty.head = mk(m.head, headMat, false, true);
+      ty.tail = mk(m.tail, tailMat, true, true);
       ty.nl = 0;
       this.types.push(ty);
+      this.byType[type] = ty;
       const isBus = isBusType(type), isTw = m.real ? !!REAL[type.slice(5)]?.ride : m.tint === true;
       list.forEach((p, i) => {
         const col = new THREE.Color();
@@ -454,13 +460,36 @@ export class Traffic {
     // headlight beams on the road
     this.beams = new THREE.InstancedMesh(new THREE.PlaneGeometry(4, 16).rotateX(-Math.PI / 2).translate(0, 0.06, 10),
       new THREE.MeshBasicMaterial({ map: beamTexture(), color: 0xfff1d8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }), this.cars.length);
-    this.beams.frustumCulled = false; this.beams.count = 0;
+    this.beams.frustumCulled = false; this.beams.count = 0; this.beams.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // refilled every frame
     scene.add(this.beams); this.meshes.push(this.beams);
+    // contact shadows: one instanced draw for every visible vehicle, so traffic sits on the road instead of floating
+    this.shadows = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, opacity: 0.75, polygonOffset: true, polygonOffsetFactor: -2 }), this.cars.length);
+    this.shadows.frustumCulled = false; this.shadows.count = 0; this.shadows.renderOrder = 1; this.shadows.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    scene.add(this.shadows); this.meshes.push(this.shadows);
+    this._ss = new THREE.Vector3(); this._sq = new THREE.Quaternion(); this._yAxis = new THREE.Vector3(0, 1, 0);
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._p = new THREE.Vector3(); this._e = new THREE.Euler(0, 0, 0, 'YXZ');
     this._s = new THREE.Vector3(1, 1, 1); this._z = new THREE.Vector3(0, 0, 0);
     this._tmp = {}; this._c = new THREE.Color();
     this.onKnock = null;
     this.drawDist = 520;
+  }
+
+  // Full-detail model for close-up vehicles of a type (same lamps, slots and colours as the light version).
+  attachNear(type, m) {
+    const ty = this.byType[type];
+    if (!ty || ty.near) return [];
+    const buf = (size) => new THREE.InstancedBufferAttribute(new Float32Array(ty.cap * size), size).setUsage(THREE.DynamicDrawUsage);
+    const lod = ty.near = { meshes: [], tinted: [], n: 0, mat: buf(16), col: buf(3) };
+    const own = REAL[type.slice(5)]?.ownLivery;
+    for (const part of m.parts) {
+      const im = new THREE.InstancedMesh(part.geo, part.mat, ty.cap);
+      im.instanceMatrix = lod.mat;
+      if (part.paint && !own) { im.instanceColor = lod.col; lod.tinted.push(im); }
+      im.frustumCulled = false; im.count = 0; im.visible = false;
+      this.scene.add(im); this.meshes.push(im); lod.meshes.push(im);
+    }
+    return lod.meshes;
   }
 
   // ---------- driving sim ----------
@@ -687,7 +716,8 @@ export class Traffic {
     if (!this.enabled) return;
     // Race clock (small t): replay deterministically from T0 so all players see the same traffic. Menu: free-run.
     const raceClock = t < 7200;
-    if (this.ts === undefined || (raceClock && (t < this.ts - 0.5 || t > this.ts + 30)) || (!raceClock && Math.abs(t - this.ts) > 30)) {
+    // small backward clock corrections just wait; only a real jump (new race, long pause) replays from T0
+    if (this.ts === undefined || (raceClock && (t < this.ts - 3 || t > this.ts + 30)) || (!raceClock && Math.abs(t - this.ts) > 30)) {
       this.resetSim();
       if (!raceClock) this.ts = t;
     }
@@ -697,7 +727,8 @@ export class Traffic {
     const s = this._tmp, L = this.track.length, E = this._e, col = this._c, Lq = this.Lq;
     const R2 = this.drawDist * this.drawDist;
     let nBeam = 0;
-    for (const ty of this.types) ty.n = ty.nl = 0;
+    for (const ty of this.types) { ty.n = ty.nl = 0; if (ty.near) ty.near.n = 0; }
+    const NEAR2 = 45 * 45;
     const LIGHTS2 = Math.max(R2, 1500 * 1500);
     for (const c of this.cars) {
       let pitch = 0, roll = 0, brake = 1;
@@ -747,18 +778,30 @@ export class Traffic {
       this._p.set(c.x, c.y + 0.02, c.z);
       this._m.compose(this._p, this._q, this._s);
       const ty = c.ty, ls = ty.nl++;
-      ty.head.setMatrixAt(ls, this._m); ty.tail.setMatrixAt(ls, this._m);
-      ty.tail.setColorAt(ls, col.setRGB(brake, brake, brake));
+      this._m.toArray(ty.lmat.array, ls * 16);
+      col.setRGB(brake, brake, brake).toArray(ty.lcol.array, ls * 3);
       if (d2 > R2) continue;
-      const slot = ty.n++;
-      for (const im of ty.meshes) im.setMatrixAt(slot, this._m);
-      for (const im of ty.tinted) im.setColorAt(slot, c.col);
-      if (!c.knocked) this.beams.setMatrixAt(nBeam++, this._m);
+      const lod = ty.near && d2 < NEAR2 ? ty.near : ty; // close-up vehicles use the full-detail model
+      const slot = lod.n++;
+      this._m.toArray(lod.mat.array, slot * 16);
+      c.col.toArray(lod.col.array, slot * 3);
+      if (!c.knocked) {
+        this.beams.setMatrixAt(nBeam, this._m);
+        this._sq.setFromEuler(E.set(pitch, c.yaw, 0)); // follow the road grade
+        this._p.y = c.y + 0.04;
+        this.shadows.setMatrixAt(nBeam++, this._m.compose(this._p, this._sq, this._ss.set(c.w * 1.25 + 0.3, 1, c.half * 2.15)));
+      }
     }
+    const upload = (a, n) => { if (n) { a.addUpdateRange(0, n * a.itemSize); a.needsUpdate = true; } };
     for (const ty of this.types) {
-      for (const im of ty.meshes) { im.count = ty.n; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
-      for (const im of [ty.head, ty.tail]) { im.count = ty.nl; im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true; }
+      for (const lod of ty.near ? [ty, ty.near] : [ty]) {
+        for (const im of lod.meshes) { im.count = lod.n; im.visible = lod.n > 0; }
+        upload(lod.mat, lod.n); upload(lod.col, lod.tinted.length ? lod.n : 0);
+      }
+      ty.head.count = ty.tail.count = ty.nl; ty.head.visible = ty.tail.visible = ty.nl > 0;
+      upload(ty.lmat, ty.nl); upload(ty.lcol, ty.nl);
     }
-    this.beams.count = nBeam; this.beams.instanceMatrix.needsUpdate = true;
+    this.beams.count = nBeam; this.beams.visible = nBeam > 0; upload(this.beams.instanceMatrix, nBeam);
+    this.shadows.count = nBeam; this.shadows.visible = nBeam > 0; upload(this.shadows.instanceMatrix, nBeam);
   }
 }

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { Track, buildWorld, gridSlot, setRoadWidth } from './track.js';
+import { Track, buildWorld, gridSlot, setRoadWidth, circuitOutline } from './track.js';
 import { CarPhysics, collide, clamp, wrapAngle } from './physics.js';
-import { loadCarModels, CarVisual, CARS, CAR_IDS, POLICE_CAR, VEHICLE_CREDITS, vehicleOpts, vehicleMass } from './cars.js';
-import { Traffic, loadTrafficModels } from './traffic.js';
+import { initTextureDecoder, loadCarModels, ensureCar, carLoaded, CarVisual, CARS, CAR_IDS, POLICE_CAR, VEHICLE_CREDITS, RIDER_CREDITS, vehicleOpts, vehicleMass } from './cars.js';
+import { Traffic, loadTrafficModels, loadNearModel } from './traffic.js';
 import { Particles, Skidmarks, Rain } from './fx.js';
 import { buildTokyo } from './tokyo.js';
 import { Music } from './music.js';
@@ -15,6 +15,7 @@ import { addSky, applySky, buildEnvironment, createComposer, FOG_COLOR } from '.
 import { THEMES } from './themes.js';
 import { planLandmarks } from './landmarks.js';
 import { planPois, buildPois } from './pois.js';
+import { chunkStatic, releaseOnUpload, releaseImages, freezeStatic } from './chunk.js';
 import { buildIndia } from './india.js';
 
 const $ = (id) => document.getElementById(id);
@@ -24,6 +25,8 @@ const STEP = 1 / 120;
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+// Reading shader compile logs blocks until each shader finishes compiling; only worth it when debugging (?debug).
+renderer.debug.checkShaderErrors = location.search.includes('debug');
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.95;
@@ -42,28 +45,30 @@ const lampLights = [];
 for (let i = 0; i < 4; i++) { const l = new THREE.PointLight(0xffa65a, 0, 34, 1.6); scene.add(l); lampLights.push(l); }
 const copLights = [];
 for (let i = 0; i < 3; i++) { const l = new THREE.PointLight(0xff0000, 0, 30, 1.6); scene.add(l); copLights.push(l); }
-const heads = [0, 1].map(() => {
-  const s = new THREE.SpotLight(0xfff1d8, 0, 110, 0.42, 0.55, 1.4);
+const heads = [0].map(() => { // one centred beam: each light costs every lit pixel
+  const s = new THREE.SpotLight(0xfff1d8, 0, 110, 0.5, 0.6, 1.4);
   scene.add(s, s.target);
   return s;
 });
 
-const { composer, bloom, grade } = createComposer(renderer, scene, camera);
+const { composer, bloom, grade, smaa } = createComposer(renderer, scene, camera);
+initTextureDecoder(renderer);
 
 let track = new Track();
 let world = null, props = null, city = null, trafficModels = null, mapIndex = [];
 const mapCache = {};
-let traffic = null;
+let traffic = null, policeWarm = null;
 const smoke = new Particles(scene, 900, [0.3, 0.31, 0.36], false);
 const sparks = new Particles(scene, 500, [5, 2.2, 0.6], true);
 const skids = new Skidmarks(scene);
 const rain = new Rain(scene);
 
-// Graphics presets; AUTO starts high and steps down when frame time stays above ~22ms.
+// Graphics presets. Every dynamic light costs every lit pixel, so counts stay small; AUTO benchmarks in the lobby
+// (see autoBench) so the preset never changes mid-race, which would recompile every shader.
 const QUALITY = {
-  high: { pr: 1.25, msaa: 4, lamps: 4, cops: 3, rain: 2600, bloom: true, blur: true, traffic: 520 },
-  medium: { pr: 1.0, msaa: 2, lamps: 3, cops: 2, rain: 1400, bloom: true, blur: true, traffic: 400 },
-  low: { pr: 0.75, msaa: 0, lamps: 2, cops: 1, rain: 700, bloom: false, blur: false, traffic: 280 },
+  high: { pr: 1.25, msaa: 0, smaa: true, lamps: 3, cops: 2, rain: 2600, bloom: true, blur: true, traffic: 520 },
+  medium: { pr: 1.0, msaa: 0, smaa: true, lamps: 2, cops: 1, rain: 1400, bloom: true, blur: true, traffic: 400 },
+  low: { pr: 0.75, msaa: 0, smaa: false, lamps: 0, cops: 1, rain: 700, bloom: false, blur: false, traffic: 280 },
 };
 let gfxSetting = 'auto';
 try { gfxSetting = localStorage.getItem('nh.gfx') || 'auto'; } catch { /* ignore */ }
@@ -76,18 +81,38 @@ function applyQuality(name) {
   lampLights.forEach((l, i) => { l.visible = i < Q.lamps; });
   copLights.forEach((l, i) => { l.visible = i < Q.cops; });
   bloom.enabled = Q.bloom;
+  smaa.enabled = Q.smaa;
   rain.setCount(Q.rain);
   if (traffic) traffic.drawDist = Q.traffic;
   onResize();
   for (const b of document.querySelectorAll('#gfxSeg button')) b.classList.toggle('on', b.dataset.gfx === gfxSetting);
 }
+// AUTO: in the lobby and during the start countdown, try HIGH then step down until the scene holds ~55 fps, so the
+// preset is settled before the green light. Mid-race, a sustained drop under ~45 fps still steps down.
+// Judged on the median frame, not the average: one load hitch would otherwise read as a slow machine and trigger a
+// downgrade, and changing the preset recompiles every shader (a much bigger hitch).
+const bench = { t: 0, f: [], done: false, slowT: 0, skip: 2 };
+function autoBench(dt) {
+  const settling = G.phase === 'menu' || (G.phase === 'race' && net.now() < G.startAt);
+  if (gfxSetting !== 'auto' || bench.done || !settling || document.hidden) return;
+  if (bench.skip > 0) { bench.skip -= dt; return; } // let the lobby settle first
+  bench.t += dt; bench.f.push(dt);
+  if (bench.t < 1.5) return;
+  const med = bench.f.sort((a, b) => a - b)[bench.f.length >> 1];
+  bench.t = 0; bench.f = [];
+  if (med > 1 / 55 && qName !== 'low') applyQuality(qName === 'high' ? 'medium' : 'low');
+  else bench.done = true;
+}
 function trackPerf(dt) {
+  autoBench(dt);
   perf.t += dt; perf.n++;
   if (perf.t < 3) return;
   const avg = perf.t / perf.n;
   perf.fps = Math.round(1 / avg);
   perf.t = 0; perf.n = 0;
-  if (gfxSetting === 'auto' && G.phase === 'race' && avg > 1 / 45 && qName !== 'low') {
+  bench.slowT = gfxSetting === 'auto' && G.phase === 'race' && net.now() > G.startAt && avg > 1 / 45 ? bench.slowT + 3 : 0;
+  if (bench.slowT >= 6 && qName !== 'low') {
+    bench.slowT = 0;
     applyQuality(qName === 'high' ? 'medium' : 'low');
     hud.popup(`GRAPHICS: ${qName.toUpperCase()} (AUTO)`, '#8a93a6');
   }
@@ -104,14 +129,14 @@ const pursuit = new Pursuit(scene, track);
 const G = {
   phase: 'loading', mode: 'race', laps: 3, trafficOn: true, startAt: 0, slot: 0, grid: {},
   prog: 0, lastDist: 0, completed: 0, lapStart: 0, best: 0, finished: false, finishMs: 0, finishPos: 0,
-  wrongT: 0, camMode: 0, mw: false, lastCount: -1, lastLit: -1, goShown: false, escT: 0,
+  stops: [], nextStop: 0, wrongT: 0, camMode: 0, mw: false, lastCount: -1, lastLit: -1, goShown: false, escT: 0,
   lobby: { players: [], host: null, phase: 'lobby' }, results: null, freezeUntil: 0,
   driftT: 0, hitCd: 0, sendT: 0, blur: 0,
 };
 let me = new CarPhysics(track);
 let myVis = null;
 const remotes = new Map(); // id -> {vis, color, name, cops:[]}
-let name = '', color = PAINTS[0], car = 'ferrari';
+let name = '', color = PAINTS[0], car = '';
 try { name = localStorage.getItem('nh.name') || ''; color = localStorage.getItem('nh.color') || color; car = localStorage.getItem('nh.car') || car; } catch { /* storage unavailable */ }
 if (!name) name = 'Racer' + Math.floor(Math.random() * 900 + 100);
 
@@ -139,7 +164,25 @@ function setCar(id) {
   $('stSpeed').style.width = c.stats.speed * 100 + '%';
   $('stAccel').style.width = c.stats.accel * 100 + '%';
   $('stHandling').style.width = c.stats.handling * 100 + '%';
-  if (myVis && myVis.carId !== car) { myVis.dispose(); myVis = new CarVisual(car, color, { name }); scene.add(myVis.root); }
+  if (!carLoaded(id)) { $('carSpec').textContent += ' · loading…'; ensureCar(id).then(() => { if (car === id) setCar(id); }); return; }
+  if (myVis && myVis.carId !== car) swapCar();
+  prefetchCars();
+}
+// Builds the new car, compiles its shaders off the main thread and uploads it before showing it, so the swap doesn't hitch.
+let swapTok = 0;
+async function swapCar() {
+  const tok = ++swapTok, vis = new CarVisual(car, color, { name });
+  await Promise.all([compileAsync(vis.root, scene), uploadTexturesSliced(vis.root)]);
+  if (tok !== swapTok || !myVis) { vis.dispose(); return; }
+  scene.add(vis.root);
+  uploadNow(vis.root);
+  myVis.dispose(); myVis = vis;
+  refreshPaint();
+}
+// Downloads the cars either side of the selection while idle, so cycling through the roster is instant.
+function prefetchCars() {
+  const i = CAR_IDS.indexOf(car), idle = window.requestIdleCallback || ((f) => setTimeout(f, 200));
+  idle(() => { for (const d of [1, -1]) ensureCar(CAR_IDS[(i + d + CAR_IDS.length) % CAR_IDS.length]).catch(() => {}); });
 }
 const cycleCar = (d) => { setCar(CAR_IDS[(CAR_IDS.indexOf(car) + d + CAR_IDS.length) % CAR_IDS.length]); save(); sendHello(); };
 $('carPrev').onclick = () => cycleCar(-1);
@@ -159,7 +202,7 @@ $('musicBtn').onclick = () => {
 let lastLyric = '';
 function renderLyrics() {
   $('musicBtn').innerHTML = musicOn ? '&#9835; MUSIC ON' : '&#9835; MUSIC OFF';
-  if (!audio.ctx) return;
+  if (!audio.running) return;
   const l = music.lyrics();
   let html = '', next = '';
   if (!musicOn || !l) html = '<span class="muted">Music off</span>';
@@ -173,7 +216,13 @@ addEventListener('keydown', () => audio.start());
 
 function renderLobby() {
   if (!net) return;
-  const L = G.lobby, host = isHost();
+  const L = G.lobby, host = isHost(), inRoom = !!L.room;
+  $('roomPanel').classList.toggle('hidden', inRoom);
+  $('hostPanel').classList.toggle('hidden', !inRoom);
+  $('gridPanel').classList.toggle('hidden', !inRoom);
+  renderRooms();
+  if (!inRoom) return;
+  $('roomTitle').textContent = L.room.name;
   const sel = $('mapSel');
   if (sel.options.length !== mapIndex.length) {
     sel.innerHTML = mapIndex.map((m) => `<option value="${m.id}">${esc(m.name)} — ${esc(m.sub)}</option>`).join('');
@@ -186,7 +235,8 @@ function renderLobby() {
   const open = info && !info.closed;
   $('modeSeg').children[0].textContent = open ? 'SPRINT' : 'CIRCUIT RACE';
   $('lobby').innerHTML = L.players.map((p) =>
-    `<div class="p"><i class="dot" style="background:${p.color}"></i><span class="${p.id === net.id ? 'me' : ''}">${esc(p.name)}</span><span class="car">${esc(CARS[p.car]?.name || '')}</span>${p.id === L.host ? '<span class="tag">HOST</span>' : ''}</div>`).join('');
+    `<div class="p"><i class="dot" style="background:${p.color}"></i><span class="${p.id === net.id ? 'me' : ''}">${esc(p.name)}</span><span class="car">${esc(CARS[p.car]?.name || '')}</span>${p.id === L.host ? '<span class="tag">HOST</span>' : ''}`
+    + `${host && p.id !== net.id ? `<button class="kick" data-kick="${esc(p.id)}" data-name="${esc(p.name)}">KICK</button>` : ''}</div>`).join('');
   $('lobbyCount').textContent = `${L.players.length} DRIVER${L.players.length === 1 ? '' : 'S'}`;
   for (const b of $('modeSeg').children) { b.classList.toggle('on', b.dataset.mode === L.mode); b.disabled = !host; }
   for (const b of $('lapSeg').children) { b.classList.toggle('on', +b.dataset.laps === L.laps); b.disabled = !host; }
@@ -194,7 +244,7 @@ function renderLobby() {
   $('lapsRow').style.display = L.mode === 'race' && !open ? '' : 'none';
   $('startBtn').style.display = host ? '' : 'none';
   $('waitHost').style.display = host ? 'none' : '';
-  $('hostNote').textContent = host ? '(you are host)' : '';
+  $('hostNote').textContent = host ? '(you are host)' : `host: ${L.players.find((p) => p.id === L.host)?.name || ''}`;
   $('joinHint').textContent = `Friends on your network open ${location.host === 'localhost:8080' || location.hostname === '127.0.0.1' ? 'this machine\'s LAN IP (printed by the server)' : 'http://' + location.host}`;
   $('lobbyBtn').style.display = host ? '' : 'none';
   $('resWait').style.display = host ? 'none' : '';
@@ -205,8 +255,8 @@ const POI_COL = { gopuram: '#ffb400', church: '#9fd8ff', mosque: '#7dffb0', stat
 function routeOf(m) {
   if (m.route) return m.route;
   if (!m.closed) return null;
-  const t = m.id === G.mapId ? track : (routeOf.tokyo ||= new Track(null));
-  const out = [];
+  if (m.id !== G.mapId) return (routeOf.circuit ||= circuitOutline());
+  const t = track, out = [];
   for (let i = 0; i < t.n; i += Math.max(1, Math.floor(t.n / 160))) out.push([t.px[i], t.pz[i], t.py[i]]);
   out.push(out[0]);
   return out;
@@ -276,8 +326,12 @@ function drawMapPreviews(id, host) {
 // ---------- networking ----------
 let net = null;
 const netHandlers = {
-  welcome: () => sendHello(),
+  welcome: () => { if (G.lobby.room) leftRoom('reconnected'); sendHello(); },
+  rooms: (m) => { G.rooms = m.rooms; G.online = m.online; renderRooms(); },
+  left: (m) => leftRoom(m.reason, m.room),
+  err: (m) => roomMsg(m.text),
   lobby: (m) => {
+    if (m.room?.id !== G.lobby.room?.id) $('chatLog').innerHTML = ''; // new room, new conversation
     G.lobby = m;
     if (m.map && m.map !== G.mapId && G.phase === 'menu') queueMap(m.map);
     renderLobby();
@@ -289,8 +343,48 @@ const netHandlers = {
   result: (m) => showResults(m),
   knock: (m) => traffic?.applyRemoteKnock(m.k.gi, m.k),
   close: () => hud.net('reconnecting…'),
+  chat: (m) => appendChat(m),
 };
 function sendHello() { net.send({ t: 'hello', name, color, car }); }
+
+// ---------- rooms ----------
+// Players browse rooms, create one (and control it) or join one that hasn't started. Leaving, being kicked or the
+// creator closing the room all land back here.
+const EMPTY_LOBBY = { players: [], host: null, phase: 'lobby', room: null };
+function leftRoom(reason, room = '') {
+  G.lobby = { ...EMPTY_LOBBY };
+  $('chatLog').innerHTML = '';
+  net.remotes.clear();
+  syncRemoteVisuals();
+  if (G.phase === 'race' || G.phase === 'results') toMenu();
+  roomMsg({ kicked: `You were kicked from ${room}.`, closed: `${room} was closed by its creator.`, reconnected: 'Connection lost — rejoin a room.' }[reason] || '');
+  renderLobby();
+}
+function roomMsg(text) {
+  $('roomMsg').textContent = text;
+  clearTimeout(roomMsg.t);
+  if (text) roomMsg.t = setTimeout(() => { $('roomMsg').textContent = ''; }, 8000);
+}
+function renderRooms() {
+  const rooms = G.rooms || [];
+  $('roomsOnline').textContent = G.online ? `${G.online} ONLINE` : '';
+  $('roomName').placeholder = `${name}'s room`;
+  const mapName = (id) => mapIndex.find((q) => q.id === id)?.name || id;
+  $('roomList').innerHTML = rooms.length ? rooms.map((r) => {
+    const open = r.phase === 'lobby';
+    return `<div class="room${open ? '' : ' busy'}"><div class="rn"><b>${esc(r.name)}</b><span>${esc(r.host)} · ${esc(mapName(r.map))} · ${r.mode === 'pursuit' ? 'COP PURSUIT' : 'RACE'}</span></div>`
+      + `<span class="rc">${r.players}<small>${r.players === 1 ? 'DRIVER' : 'DRIVERS'}</small></span>`
+      + (open ? `<button data-room="${esc(r.id)}">JOIN</button>` : `<span class="st race">${r.phase === 'race' ? 'RACING' : 'RESULTS'}</span>`) + '</div>';
+  }).join('') : '<div class="empty">No rooms yet. Create one, and friends on your network can join it.</div>';
+}
+$('roomList').onclick = (e) => { const id = e.target.closest('button[data-room]')?.dataset.room; if (id) { audio.start(); net.send({ t: 'join', room: id }); } };
+$('createRoom').onclick = () => { audio.start(); net.send({ t: 'create', name: $('roomName').value.trim() }); $('roomName').value = ''; };
+$('roomName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.stopPropagation(); $('createRoom').click(); } });
+$('leaveRoom').onclick = () => net.send({ t: 'leave' });
+$('lobby').onclick = (e) => {
+  const b = e.target.closest('button[data-kick]');
+  if (b && isHost() && confirm(`Kick ${b.dataset.name} from the room?`)) net.send({ t: 'kick', id: b.dataset.kick });
+};
 
 function syncRemoteVisuals() {
   if (!myVis) return;
@@ -301,7 +395,16 @@ function syncRemoteVisuals() {
     let r = remotes.get(p.id);
     if (r && (r.color !== p.color || r.name !== p.name || r.car !== p.car)) { r.vis?.dispose(); r.vis = null; }
     if (!r) { r = { cops: [], st: {} }; remotes.set(p.id, r); }
-    if (!r.vis) { r.vis = new CarVisual(p.car, p.color, { name: p.name }); r.color = p.color; r.name = p.name; r.car = p.car; scene.add(r.vis.root); }
+    if (!r.vis) {
+      // until their car has downloaded, show a stand-in and rebuild once it arrives
+      const ready = carLoaded(p.car) || !CARS[p.car];
+      if (!ready) ensureCar(p.car).then(syncRemoteVisuals);
+      r.vis = new CarVisual(p.car, p.color, { name: p.name }); r.color = p.color; r.name = p.name; r.car = ready ? p.car : null; scene.add(r.vis.root);
+      // compile its shaders off the main thread first, so a player joining (or their car arriving) doesn't hitch
+      const vis = r.vis;
+      vis.root.visible = false;
+      Promise.all([compileAsync(vis.root, scene), uploadTexturesSliced(vis.root)]).then(() => { if (!vis.root.parent) return; vis.root.visible = true; uploadNow(vis.root); });
+    }
   }
 }
 
@@ -315,22 +418,22 @@ function disposeCity() {
   if (!city) return;
   city.removeFromParent();
   city.traverse((o) => {
-    o.geometry?.dispose();
+    if (!o.geometry?.userData.shared) o.geometry?.dispose(); // shared traffic models stay on the GPU for the next map
     for (const m of [].concat(o.material || [])) {
-      for (const k of ['map', 'roughnessMap', 'emissiveMap']) m[k]?.dispose?.();
+      for (const k of ['map', 'roughnessMap', 'emissiveMap']) if (!m[k]?.userData?.shared) m[k]?.dispose?.();
       m.uniforms?.map?.value?.dispose?.();
-      m.dispose();
+      if (!m.userData.shared) m.dispose();
     }
   });
   city = null;
 }
-async function loadMap(id) {
+async function loadMap(id, progress) {
   if (G.mapId === id) return;
   if (!THEMES[id]) id = 'tokyo';
   const data = id === 'tokyo' ? null : (mapCache[id] ||= await (await fetch(`maps/${id}.json`)).json());
   const base = THEMES[id];
   const T = { ...base, banner: data ? data.start : base.banner, endLabel: data ? data.end : 'FINISH', terrain: data?.terrain, pois: data?.pois };
-  $('loadtext').textContent = 'Building ' + (data ? data.name : 'Neon Harbor') + '…';
+  $('loadtext').textContent = 'Building ' + (data ? data.name : 'Neon Harbor circuit') + '…';
   disposeCity();
   setRoadWidth(data?.roadHalfWidth || 9);
   track = new Track(data ? { ...data, overpasses: T.overpasses } : null);
@@ -339,17 +442,27 @@ async function loadMap(id) {
   T.reserved = plans.concat(poiPlans);
   city = new THREE.Group();
   scene.add(city);
+  await progress?.(0.15, 'Laying ' + (data ? data.name : 'the circuit') + '…');
   world = buildWorld(city, track, renderer, T);
+  await progress?.(0.45, 'Raising the city…');
   props = T.tokyo ? buildTokyo(city, track, world) : buildIndia(city, track, world, T, plans);
   props.setWet(rain.visible);
   buildPois(city, track, T, poiPlans, world.groundY);
+  await progress?.(0.75, 'Spawning traffic…');
   traffic = new Traffic(city, track, trafficModels, T, id, world.groundY);
   traffic.drawDist = Q.traffic;
+  chunkStatic(city, new Set(traffic.meshes)); // route-long static meshes -> 400 m tiles the camera can cull
+  releaseOnUpload(city);
+  freezeStatic(city);
   traffic.onKnock = (gi, k, imp) => {
     net?.send({ t: 'knock', k: { gi, x: k.x, y: k.y, z: k.z, vx: k.vx, vy: k.vy, vz: k.vz, yaw: k.yaw, pitch: 0, roll: 0, wy: k.wy, wp: k.wp, wr: k.wr } });
     if (imp > 6) hud.popup(imp > 14 ? 'WRECKED!' : 'TAKEDOWN', '#ffb400');
   };
   hud.setTrack(track);
+  // checkpoints along sprint routes: real bus stops (and landmarks / numbered ghat hairpins where stops are sparse)
+  G.stops = (data?.stops || []).map((q) => ({ name: q.name, x: q.x, z: q.z, d: track.nearest(q.x, q.z).dist }))
+    .filter((q) => q.d > track.startDist + 60 && q.d < track.finishDist - 60).sort((a, b) => a.d - b.d);
+  hud.setStops(G.stops, data?.end || '');
   pursuit.track = track;
   pursuit.reset();
   applySky(sky, scene, T.sky);
@@ -358,10 +471,108 @@ async function loadMap(id) {
   oldEnv?.dispose();
   me = new CarPhysics(track);
   G.mapId = id; G.theme = T; G.mapInfo = data || TOKYO_INFO;
-  // upload every texture now so the first sight of a vehicle or building type mid-race doesn't hitch
-  scene.traverse((o) => { for (const m of [].concat(o.material || [])) for (const k in m) if (m[k]?.isTexture) renderer.initTexture(m[k]); });
-  renderer.compile(scene, camera);
+  await progress?.(1);
+  // Warm the GPU for everything, including traffic types not yet on screen and the police car (kept hidden so its
+  // programs stay cached), so nothing compiles or uploads mid-race.
+  if (!policeWarm) { policeWarm = new CarVisual(POLICE_CAR, 0x08090c, { police: true, beam: false }); scene.add(policeWarm.root); }
+  const near = loadNearTraffic(traffic);
   renderLobby();
+  const c = city, release = () => { if (city === c) releaseImages(c, renderer); };
+  if (progress) {
+    await warmUp([...traffic.meshes, policeWarm.root]);
+    release();
+    // close-up traffic models: worth waiting for briefly at boot, otherwise they finish in the background
+    await Promise.race([near, new Promise((r) => setTimeout(r, 4000))]);
+  } else warmUp([...traffic.meshes, policeWarm.root]).then(release);
+}
+
+// Uploads every texture and geometry and compiles every shader in the scene (plus the given hidden objects) up front.
+// Shaders compile in parallel off the main thread where the browser supports it; then one render into a tiny target
+// with culling off uploads all geometry, so nothing first appears (and stalls) mid-race.
+const warmRT = new THREE.WebGLRenderTarget(4, 4);
+// Like renderer.compileAsync (shaders link in parallel off the main thread where supported), but compiled for an
+// offscreen target, which is what the post-processing chain renders into (on-screen variants differ: tone mapping,
+// colour space), and a material disposed meanwhile (a player leaving) just drops out instead of making three.js throw.
+function compileAsync(obj, target = null) {
+  renderer.setRenderTarget(warmRT);
+  const mats = renderer.compile(obj, camera, target);
+  renderer.setRenderTarget(null);
+  return new Promise((resolve) => {
+    const check = () => {
+      for (const mt of mats) { const p = renderer.properties.get(mt).currentProgram; if (!p || p.isReady()) mats.delete(mt); }
+      if (mats.size) setTimeout(check, 10); else resolve();
+    };
+    setTimeout(check, 10);
+  });
+}
+// Uploads objects' geometry and textures (hidden parts too) by rendering only them, plus the scene's lights so the
+// shaders match, into the tiny offscreen target: camera layer 31 holds just those.
+const warmCam = new THREE.PerspectiveCamera();
+// A newly seen vehicle's textures go to the GPU a few at a time across frames (models can carry dozens), so the final
+// upload render below has only geometry left to do.
+async function uploadTexturesSliced(root) {
+  const ts = new Set();
+  root.traverse((o) => { for (const m of [].concat(o.material || [])) for (const k in m) if (m[k]?.isTexture) ts.add(m[k]); });
+  let t0 = performance.now();
+  for (const t of ts) {
+    renderer.initTexture(t);
+    if (performance.now() - t0 > 6) { await nextPaint(); t0 = performance.now(); }
+  }
+}
+function uploadNow(...roots) {
+  scene.traverse((o) => { if (o.isLight) o.layers.enable(31); });
+  const culled = [], hidden = [];
+  for (const root of roots) root.traverse((o) => {
+    o.layers.enable(31);
+    if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); }
+    if (!o.visible) { o.visible = true; hidden.push(o); }
+  });
+  warmCam.copy(camera); warmCam.layers.set(31);
+  renderer.setRenderTarget(warmRT);
+  renderer.render(scene, warmCam);
+  renderer.setRenderTarget(null);
+  for (const root of roots) root.traverse((o) => o.layers.disable(31));
+  for (const o of culled) o.frustumCulled = true;
+  for (const o of hidden) o.visible = false;
+}
+async function warmUp(extra = []) {
+  const show = (on, list) => { for (const o of list) o.visible = on; };
+  const hidden = extra.filter((o) => !o.visible);
+  scene.traverse((o) => { for (const m of [].concat(o.material || [])) for (const k in m) if (m[k]?.isTexture) renderer.initTexture(m[k]); });
+  show(true, hidden);
+  const ready = compileAsync(scene);
+  show(false, hidden);
+  await ready;
+  const culled = [];
+  scene.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); } });
+  show(true, hidden);
+  renderer.setRenderTarget(warmRT);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  show(false, hidden);
+  for (const o of culled) o.frustumCulled = true;
+}
+
+// Close-up detail: traffic types that also exist as player vehicles get that full-detail model (more triangles,
+// 1024 px compressed textures) for vehicles within ~45 m. All load in parallel and are warmed up in one go, so
+// nothing compiles on first sight.
+async function loadNearTraffic(tr) {
+  const ids = tr.types.map((ty) => ty.type.startsWith('real:') && ty.type.slice(5)).filter((id) => id && VEHICLE_CREDITS[id] && !CARS[id]?.noNear);
+  const models = await Promise.all(ids.map((id) => loadNearModel(id)));
+  if (traffic !== tr) return; // map changed meanwhile
+  // one vehicle type per frame (compile, textures in slices, then geometry), so the extra detail never hitches
+  for (let i = 0; i < ids.length; i++) {
+    if (!models[i] || traffic !== tr) continue;
+    const meshes = tr.attachNear('real:' + ids[i], models[i]);
+    if (!meshes.length) continue;
+    for (const im of meshes) releaseOnUpload(im);
+    await Promise.all(meshes.map((im) => compileAsync(im, scene)));
+    for (const im of meshes) await uploadTexturesSliced(im);
+    if (traffic !== tr) return;
+    uploadNow(...meshes); // just these meshes, not the whole scene
+    await nextPaint();
+  }
+  if (traffic === tr) releaseImages(city, renderer);
 }
 
 // ---------- flow ----------
@@ -375,7 +586,7 @@ function toMenu() {
 }
 
 function startEvent(m) {
-  G.phase = 'race'; G.mode = m.mode; G.laps = m.laps; G.trafficOn = m.traffic; G.startAt = m.startAt; G.grid = m.grid;
+  G.phase = 'race'; G.mode = m.mode; G.laps = m.laps; G.trafficOn = m.traffic; G.startAt = m.startAt; G.grid = m.grid; G.nextStop = 0;
   G.slot = m.grid[net.id] ?? 0;
   const g = gridSlot(track, G.slot);
   me = new CarPhysics(track, vehicleOpts(car));
@@ -412,18 +623,23 @@ const CAMS = [{ back: 6.4, up: 2.05, look: 0.95 }, { back: 4.4, up: 1.5, look: 0
 function updateCamera(dt, t) {
   const lb = input.lookBack();
   const m = CAMS[G.camMode];
+  // buses and lorries: the chase camera backs off and rises with the vehicle, cockpit views move to its real cab
+  const d = myVis?.dims, big = d && d.l > 5.2, s = big ? d.l / 4.4 : 1;
   if (m.back) {
     cam.yaw += wrapAngle(me.yaw - cam.yaw) * (1 - Math.exp(-dt * 6.5));
     const yaw = cam.yaw + (lb ? Math.PI : 0);
     const fx = Math.sin(yaw), fz = Math.cos(yaw);
-    const back = m.back + Math.min(me.speed, 100) * 0.018;
+    const back = m.back * s + Math.min(me.speed, 100) * 0.018;
+    const up = big ? d.h + m.up * 0.6 : m.up, look = big ? d.h * 0.55 : m.look;
     const cx = me.x - fx * back, cz = me.z - fz * back;
-    const cy = Math.max(me.y + m.up + Math.min(me.speed, 100) * 0.003, (world?.groundY?.(cx, cz) ?? -1e9) + 1.2);
+    const cy = Math.max(me.y + up + Math.min(me.speed, 100) * 0.003, (world?.groundY?.(cx, cz) ?? -1e9) + 1.2);
     camera.position.set(cx, cy, cz);
-    camera.lookAt(me.x + fx * 5, me.y + m.look, me.z + fz * 5);
+    camera.lookAt(me.x + fx * 5 * s, me.y + look, me.z + fz * 5 * s);
   } else {
     const yaw = me.yaw + (lb ? Math.PI : 0), fx = Math.sin(me.yaw), fz = Math.cos(me.yaw);
-    const off = m.hood ? (lb ? -1.6 : 0.1) : (lb ? -2.4 : 2.35), y = m.hood ? 1.18 : 0.55;
+    const off = big ? (m.hood ? (lb ? d.minZ * 0.6 : d.maxZ - 1.1) : (lb ? d.minZ - 0.3 : d.maxZ + 0.15))
+      : m.hood ? (lb ? -1.6 : 0.1) : (lb ? -2.4 : 2.35);
+    const y = big ? (m.hood ? d.h * 0.72 : 1.0) : m.hood ? 1.18 : 0.55;
     camera.position.set(me.x + fx * off, me.y + y, me.z + fz * off);
     camera.lookAt(camera.position.x + Math.sin(yaw) * 20, me.y + y - 0.4 + Math.tan(me.pitch) * 20, camera.position.z + Math.cos(yaw) * 20);
   }
@@ -533,6 +749,10 @@ function updateRace(dt, inp, st, t) {
 
   // progress / laps
   G.prog += track.delta(me.dist, G.lastDist);
+  while (G.stops.length && G.nextStop < G.stops.length && me.dist >= G.stops[G.nextStop].d && st >= G.startAt) {
+    const q = G.stops[G.nextStop++];
+    hud.popup(`📍 ${esc(q.name.toUpperCase())}`, '#ffb400', `CHECKPOINT ${G.nextStop}/${G.stops.length} · ${fmt((st - G.startAt) / 1000)}`);
+  }
   G.lastDist = me.dist;
   const finishRace = () => {
     G.finished = true; G.finishMs = st - G.startAt;
@@ -596,10 +816,11 @@ function updateRace(dt, inp, st, t) {
   G.sendT -= dt;
   if (G.sendT <= 0) {
     G.sendT = 0.05;
-    const r2 = (v) => Math.round(v * 100) / 100;
-    const s = { x: r2(me.x), z: r2(me.z), y: r2(me.yaw), h: r2(me.y), pp: r2(me.pitch), vx: r2(me.vx), vz: r2(me.vz), st: r2(me.steer), n: me.nitroOn ? 1 : 0,
-      br: me.brake > 0.3 ? 1 : 0, d: me.drifting || (me.handbrake && me.speed > 6) ? 1 : 0, p: Math.round(G.prog), f: G.finishMs };
-    if (G.mode === 'pursuit') { s.b = pursuit.banked + Math.floor(pursuit.bounty); s.h = pursuit.heat; s.c = pursuit.snapshot(); }
+    // compact array (see unpackState in net.js): every player receives every other player's state 20x a second
+    const r2 = (v) => Math.round(v * 100) / 100, r3 = (v) => Math.round(v * 1000) / 1000;
+    const flags = (me.nitroOn ? 1 : 0) | (me.brake > 0.3 ? 2 : 0) | (me.drifting || (me.handbrake && me.speed > 6) ? 4 : 0);
+    const s = [r2(me.x), r2(me.z), r3(me.yaw), r2(me.y), r3(me.pitch), r2(me.vx), r2(me.vz), r2(me.steer), flags, Math.round(G.prog), G.finishMs];
+    if (G.mode === 'pursuit') s.push(pursuit.banked + Math.floor(pursuit.bounty), pursuit.snapshot());
     net.send({ t: 's', s });
   }
 
@@ -666,6 +887,17 @@ function updateRemotes(dt, st, t) {
       syncRemoteCops(r, [], dt, t);
     }
   }
+  // Each car's road beam is a big additive quad: with a crowd around you the overlapping beams cost more GPU than the
+  // cars themselves, so only the nearest few other players light the road.
+  const lit = [];
+  for (const [, r] of remotes) {
+    const b = r.vis?.beam; if (!b) continue;
+    const p = r.vis.root.position, d2 = (p.x - camera.position.x) ** 2 + (p.z - camera.position.z) ** 2;
+    b.visible = false;
+    if (d2 < 60 * 60) lit.push([d2, b]);
+  }
+  if (lit.length > 4) lit.sort((a, b) => a[0] - b[0]);
+  for (let k = 0; k < Math.min(4, lit.length); k++) lit[k][1].visible = true;
 }
 function syncRemoteCops(r, arr, dt, t) {
   while (r.cops.length < arr.length) { const v = new CarVisual(POLICE_CAR, 0x08090c, { police: true, beam: false }); scene.add(v.root); r.cops.push(v); }
@@ -705,12 +937,11 @@ function updateLights(t) {
     L.intensity = 60;
   });
   const fx = Math.sin(me.yaw), fz = Math.cos(me.yaw);
-  heads.forEach((h, i) => {
-    const side = i ? 1 : -1;
-    h.intensity = 130;
-    h.position.set(me.x + fx * 2.1 + fz * 0.65 * side, me.y + 0.7, me.z + fz * 2.1 - fx * 0.65 * side);
-    h.target.position.set(me.x + fx * 30 + fz * 1.5 * side, me.y + Math.tan(me.pitch) * 30, me.z + fz * 30 - fx * 1.5 * side);
-  });
+  for (const h of heads) {
+    h.intensity = 240;
+    h.position.set(me.x + fx * 2.1, me.y + 0.7, me.z + fz * 2.1);
+    h.target.position.set(me.x + fx * 30, me.y + Math.tan(me.pitch) * 30, me.z + fz * 30);
+  }
 }
 
 // After the finish line the player loses control: the car eases into the right lane and parks.
@@ -729,6 +960,7 @@ function finishPilot(dt) {
 // ---------- keys ----------
 function handleKeys() {
   if (input.pressed('KeyM')) { audio.setMuted(!audio.muted); hud.popup(audio.muted ? 'MUTED' : 'SOUND ON', '#8a93a6'); }
+  if (input.pressed('KeyH')) audio.honk();
   if (input.pressed('KeyK')) { rain.visible = !rain.visible; props.setWet(rain.visible); hud.popup(rain.visible ? 'RAIN' : 'CLEAR SKIES', '#39e6ff'); }
   if (input.pressed('KeyG')) { G.mw = !G.mw; hud.popup(G.mw ? '"MOST WANTED" FILTER' : 'NEON NIGHT', '#ffb400'); }
   if (G.phase !== 'race' && G.phase !== 'results') return;
@@ -765,10 +997,12 @@ function frame() {
     const g = gridSlot(track, myLobbyIndex());
     me.x = g.x; me.z = g.z; me.y = g.y; me.pitch = 0; me.yaw = g.yaw; me.vx = me.vz = 0; me.fwd = 0; me.speed = 0;
     menuCamera(t);
-    if (audio.ctx && musicOn && !music.on) music.start();
+    if (audio.running && musicOn && !music.on) music.start();
     renderLyrics();
   }
-  myVis.update(dt, { x: me.x, z: me.z, y: me.y, pitch: me.pitch, yaw: me.yaw, fwd: me.fwd, steer: me.steer, lean: me.bike ? me.lean : undefined, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
+  const wheelieT = me.bike && inp.wheelie && me.throttle > 0.3 && me.fwd > 2 && me.fwd < 85 ? 0.55 : 0;
+  me.wheelie = (me.wheelie || 0) + (wheelieT - (me.wheelie || 0)) * Math.min(1, dt * 3.5);
+  myVis.update(dt, { x: me.x, z: me.z, y: me.y, pitch: me.pitch, yaw: me.yaw, fwd: me.fwd, steer: me.steer, lean: me.bike ? me.lean : undefined, wheelie: me.wheelie, braking: me.brake > 0.3 || (me.fwd < 0.5 && G.phase === 'race'), nitro: me.nitroOn }, t);
   myVis.tag.visible = false;
   updateRemotes(dt, st, t);
 
@@ -793,6 +1027,7 @@ function frame() {
       if (r?.live) { others.push({ x: r.st.x, z: r.st.z, color: p.color }); for (const v of r.cops) otherCops.push([v.root.position.x, v.root.position.z]); }
     }
     hud.drawMinimap(me, others, pursuit.cops, otherCops, t);
+    if (G.stops.length) hud.drawStops(me, G.nextStop, t);
     let vis = 0; for (const [, r] of remotes) if (r.live) vis++;
     hud.net(`${Math.round(net.rtt || 0)} ms · ${perf.fps} fps · ${qName} · ${G.lobby.players.length} driver${G.lobby.players.length === 1 ? '' : 's'} · ${vis} visible`);
   }
@@ -826,44 +1061,199 @@ addEventListener('resize', onResize);
 function ordinal(n) { return n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th'); }
 
 // ---------- boot ----------
+// Loading screen: weighted progress over the four stages, plus rotating tips.
+const LOAD_W = { cars: 0.4, traffic: 0.2, map: 0.3, gpu: 0.1 }, loadProg = { cars: 0, traffic: 0, map: 0, gpu: 0 };
+function loadStep(step, f, text) {
+  loadProg[step] = Math.max(loadProg[step], Math.min(1, f));
+  const p = Object.keys(LOAD_W).reduce((a, k) => a + LOAD_W[k] * loadProg[k], 0);
+  $('loadbar').style.width = (p * 100).toFixed(1) + '%';
+  $('loadpct').textContent = Math.floor(p * 100) + '%';
+  for (const li of $('ldSteps').children) {
+    const v = loadProg[li.dataset.s];
+    li.classList.toggle('done', v >= 1);
+    li.classList.toggle('active', v < 1 && (v > 0 || li.dataset.s === step));
+  }
+  if (text) $('loadtext').textContent = text;
+}
+const nextPaint = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+const TIPS = [
+  'Hold <b>Q</b> on a bike to pull a wheelie.', 'Tap <b>H</b> for the horn.', 'Press <b>Enter</b> to chat with the lobby.',
+  'Bus stops along the route are your checkpoints — watch the strip top-right.', 'Wayanad ghat: nine hairpins, and the climb is real.',
+  'Shift (or N) fires nitro. Save it for the straights.', 'Clip traffic hard enough and it counts as a takedown.',
+  'Every route follows real roads, mapped from OpenStreetMap.', 'GRAPHICS: AUTO settles the preset in the lobby, before the green light.',
+];
+let tipN = Math.floor(Math.random() * TIPS.length);
+const showTip = () => { $('ldTip').innerHTML = TIPS[tipN++ % TIPS.length]; };
+showTip();
+const tipTimer = setInterval(showTip, 3500);
 (async () => {
   try {
     await Promise.all([['NeonJP', 'jp'], ['NeonKN', 'kn'], ['NeonTA', 'ta'], ['NeonML', 'ml'], ['NeonTE', 'te']].map(async ([fam, f]) => {
       try { const font = new FontFace(fam, `url(fonts/neon-${f}.woff)`); await font.load(); document.fonts.add(font); } catch { /* system font fallback */ }
     }));
-    $('loadtext').textContent = 'Loading cars…';
-    const [, tm, idx] = await Promise.all([loadCarModels((p) => { $('loadbar').style.width = Math.round(p * 100) + '%'; }), loadTrafficModels(),
+    audio.init(); music.init(); // suspended until the first click; built now so that click doesn't stall a frame
+    loadStep('cars', 0, 'Loading cars…');
+    const [, tm, idx] = await Promise.all([loadCarModels((p) => loadStep('cars', p)), loadTrafficModels((p) => loadStep('traffic', p)),
       fetch('maps/index.json').then((r) => r.json())]);
     trafficModels = tm;
     // CC-BY attribution for downloaded vehicle models
     const tc = await fetch('models/traffic/credits.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
-    const vc = { ...tc, ...VEHICLE_CREDITS };
-    if (Object.keys(vc).length) document.querySelector('.credits').append(' · Vehicles (Sketchfab, CC): ' + Object.values(vc).map((c) => `${c.title} by ${c.author}`).join(', '));
+    const vc = { ...tc, ...VEHICLE_CREDITS, ...RIDER_CREDITS };
+    if (Object.keys(vc).length) document.querySelector('.credits').append(' · Vehicles and rider (Sketchfab, CC): ' + Object.values(vc).map((c) => `${c.title} by ${c.author}`).join(', '));
     mapIndex = [...idx, TOKYO_INFO];
     rain.visible = true;
-    await loadMap('bengaluru');
+    // settle the preset first: light counts are part of every shader, so changing it later recompiles everything
+    applyQuality(gfxSetting === 'auto' ? 'high' : gfxSetting);
+    if (!CAR_IDS.includes(car)) car = CAR_IDS[0];
+    myVis = new CarVisual(car, color, { name });
+    scene.add(myVis.root);
+    await loadMap('bengaluru', (f, text) => { loadStep('map', f, text); if (f < 1) return nextPaint(); loadStep('gpu', 0, 'Warming up the GPU…'); return nextPaint(); });
+    loadStep('gpu', 0.6);
+    composer.render(); // post-processing passes too
+    loadStep('gpu', 1, 'Ready');
   } catch (e) {
-    $('loadtext').textContent = 'Failed to load car model: ' + e.message;
+    $('loadtext').textContent = 'Failed to load: ' + e.message;
     throw e;
   }
-  if (!CAR_IDS.includes(car)) car = CAR_IDS[0];
-  myVis = new CarVisual(car, color, { name });
   setCar(car);
-  scene.add(myVis.root);
   refreshPaint();
+  clearInterval(tipTimer);
   $('loading').classList.add('hidden');
   $('menu').classList.remove('hidden');
   G.phase = 'menu';
   for (const b of $('gfxSeg').children) b.onclick = () => {
     gfxSetting = b.dataset.gfx;
     try { localStorage.setItem('nh.gfx', gfxSetting); } catch { /* ignore */ }
+    bench.done = false;
     applyQuality(gfxSetting === 'auto' ? 'high' : gfxSetting);
   };
-  applyQuality(gfxSetting === 'auto' ? 'high' : gfxSetting);
-  renderer.compile(scene, camera);
   net = new Net(netHandlers);
   renderLobby();
   syncRemoteVisuals();
   onResize();
 })();
 frame();
+
+// ---------- chat ----------
+const chatEl = $('chat'), chatLog = $('chatLog'), chatForm = $('chatForm'), chatInput = $('chatInput');
+const chatPill = $('chatPill'), chatClose = $('chatClose'), chatBadge = $('chatBadge'), chatPeers = $('chatPeers');
+let chatUnread = 0;
+function openChat() {
+  chatEl.classList.add('open');
+  chatUnread = 0; chatBadge.classList.add('hidden'); chatBadge.textContent = '0';
+  setTimeout(() => { chatInput.focus(); chatLog.scrollTop = chatLog.scrollHeight; }, 20);
+}
+function closeChat() {
+  chatEl.classList.remove('open');
+  chatInput.blur();
+  if ($('emojiPanel')) toggleEmoji(false);
+}
+function appendChat(m) {
+  const line = document.createElement('div');
+  line.className = 'msg';
+  const mine = m.from === net?.id;
+  line.innerHTML = `<b style="color:${esc(m.color || '#8feaff')}">${esc(m.name || '?')}${mine ? ' (you)' : ''}:</b>${esc(m.text)}`;
+  chatLog.appendChild(line);
+  while (chatLog.children.length > 80) chatLog.removeChild(chatLog.firstChild);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  if (!chatEl.classList.contains('open') && !mine) {
+    chatUnread = Math.min(99, chatUnread + 1);
+    chatBadge.textContent = chatUnread;
+    chatBadge.classList.remove('hidden');
+  }
+}
+function updateChatPeers() {
+  const n = G.lobby?.room ? G.lobby.players.length : G.online || 0;
+  chatPeers.textContent = n;
+}
+chatPill.addEventListener('click', openChat);
+chatClose.addEventListener('click', closeChat);
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+  e.preventDefault();
+  openChat();
+});
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { chatInput.value = ''; closeChat(); }
+});
+chatForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const txt = chatInput.value.trim();
+  if (txt) net?.send({ t: 'chat', text: txt });
+  chatInput.value = '';
+  chatInput.focus();
+});
+setInterval(updateChatPeers, 1000);
+
+// Dock chat into menu-right while menu visible, float otherwise.
+const menuEl = $('menu'), chatDock = $('chatDock');
+const chatHomeParent = chatEl.parentNode;
+const chatHomeNext = chatEl.nextSibling;
+function syncChatDock() {
+  const menuOpen = menuEl && !menuEl.classList.contains('hidden');
+  if (menuOpen) {
+    if (chatEl.parentNode !== chatDock) {
+      chatDock.appendChild(chatEl);
+      chatEl.classList.add('docked');
+      chatEl.classList.add('open');
+      chatDock.style.display = 'block';
+    }
+  } else {
+    if (chatEl.parentNode === chatDock) {
+      chatHomeParent.insertBefore(chatEl, chatHomeNext);
+      chatEl.classList.remove('docked');
+      chatEl.classList.remove('open');
+      chatDock.style.display = 'none';
+    }
+  }
+}
+if (menuEl) new MutationObserver(syncChatDock).observe(menuEl, { attributes: true, attributeFilter: ['class'] });
+syncChatDock();
+
+// emoji picker
+const EMOJIS = {
+  smile: ['😀','😁','😂','🤣','😅','😊','😇','🙂','🙃','😉','😍','🥰','😘','😜','🤪','😎','🤩','🥳','🤗','🤔','🤨','😐','😑','😶','🙄','😏','😒','😔','😴','🤤','😪','😮','😲','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','🤒','🤕','🤢','🤮','🤧','🥴','😵','🤠','🥸','🤓','🧐'],
+  love: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','♥️','💌','😍','🥰','😘','💋','💑','💏','💐','🌹','🌷','🌺'],
+  hand: ['👍','👎','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👋','🤚','🖐️','✋','🖖','👏','🙌','🤝','🙏','✍️','💪','🦾','🦵','🦶','👂','👃','🧠','👀','👁️','👅','👄'],
+  car: ['🏎️','🏁','🚗','🚙','🚕','🚓','🚑','🚒','🚐','🚚','🚛','🚜','🏍️','🛵','🚲','🛴','🚨','🛞','⛽','🛣️','🛤️','🌉','🚦','🚧','🏆','🥇','🥈','🥉','🎖️','🏅','💨','🔥','⚡','💥','🌪️','☠️','💀','🤖'],
+  party: ['🎉','🎊','🥳','🎈','🎁','🎀','🪅','🪩','🎆','🎇','✨','🌟','⭐','🎵','🎶','🎸','🥁','🎹','🎺','🎷','🍾','🍻','🍺','🥂','🍹','🍸','🍷','🥤','🧃','🍕','🍔','🍟','🌮','🍿','🍩','🎂','🍰'],
+  object: ['⭐','🌟','✨','💫','⚡','🔥','💧','🌈','☀️','🌙','⛅','☁️','🌧️','⛈️','🌊','🪐','🌍','💎','💰','💸','🎯','🎮','🕹️','♟️','🎲','🧩','🎧','📱','💻','⌨️','🖱️','🔋','🔌','💡','🔦','🧨','🚀','🛸','👽','👾','🤖','🎃','😈','👻','💀','☠️','👹','👺']
+};
+const emojiBtn = $('chatEmoji'), emojiPanel = $('emojiPanel'), emojiGrid = $('emojiGrid');
+let emojiCat = 'smile';
+function renderEmojiGrid() {
+  emojiGrid.innerHTML = '';
+  for (const e of EMOJIS[emojiCat]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = e;
+    b.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const s = chatInput.value, p = chatInput.selectionStart ?? s.length;
+      chatInput.value = s.slice(0, p) + e + s.slice(chatInput.selectionEnd ?? p);
+      const np = p + e.length;
+      chatInput.focus();
+      chatInput.setSelectionRange(np, np);
+    });
+    emojiGrid.appendChild(b);
+  }
+}
+function toggleEmoji(force) {
+  const show = force !== undefined ? force : emojiPanel.classList.contains('hidden');
+  emojiPanel.classList.toggle('hidden', !show);
+  emojiBtn.classList.toggle('on', show);
+  if (show) renderEmojiGrid();
+}
+emojiBtn.addEventListener('click', (e) => { e.preventDefault(); toggleEmoji(); });
+for (const t of document.querySelectorAll('#emojiTabs .tab')) {
+  t.addEventListener('click', (e) => {
+    e.preventDefault();
+    emojiCat = t.dataset.cat;
+    for (const x of document.querySelectorAll('#emojiTabs .tab')) x.classList.toggle('on', x === t);
+    renderEmojiGrid();
+  });
+}
+document.addEventListener('click', (e) => {
+  if (!chatEl.contains(e.target) && !emojiPanel.classList.contains('hidden')) toggleEmoji(false);
+});

@@ -8,7 +8,7 @@ export function wrapAngle(a) {
 }
 
 const GEARS = [0, 17, 30, 44, 58, 73, 115];
-const GAME = 0.8; // vehicles reach their real 0-100 (or 0-60) in 80% of the real time; top speeds are real
+const GAME = 1; // real 0-100 (or 0-60) times and real top speeds; only nitro goes beyond them
 
 // Tractive model: acc = min(A, P / (v + 9)) - cd*v^2 - rolling. Solves A, P, cd so the vehicle hits its real top speed
 // and accelerates to vAcc (km/h) in tAcc*GAME seconds.
@@ -44,6 +44,8 @@ export class CarPhysics {
     this.bike = !!opts.bike;
     this.hw = opts.hw ?? 0.98; this.hl = opts.hl ?? 2.2;
     if (opts.half) { this.half = opts.half; this.r = opts.r; }
+    // heavy vehicles: a long wheelbase turns wide (turn < 1) and the big steering wheel is slow (steerRate)
+    this.turn = opts.turn ?? 1; this.steerRate = opts.steerRate ?? 9;
     this.lean = 0;
     this._n = {};
   }
@@ -78,10 +80,10 @@ export class CarPhysics {
     // that allows over-rotation.
     if ((inp.handbrake && sAbs > 12) || (inp.brake > 0.5 && Math.abs(inp.steer) > 0.6 && fwd > 25)) this.driftLatch = true;
     const k = Math.min(sAbs / 6, 1);
-    let turn = Math.min(k * (2.3 - 1.25 * Math.min(sAbs / 95, 1)), ((this.driftLatch ? 56 : 28) * this.grip) / Math.max(sAbs, 1));
+    let turn = Math.min(k * (2.3 - 1.25 * Math.min(sAbs / 95, 1)) * this.turn, ((this.driftLatch ? 56 : 28) * this.grip) / Math.max(sAbs, 1));
     if (this.driftLatch || inp.handbrake) turn *= 1.25;
     const target = -inp.steer * turn * (fwd >= 0 ? 1 : -1);
-    this.yawRate += (target - this.yawRate) * Math.min(1, dt * (this.drifting ? 5 : 9));
+    this.yawRate += (target - this.yawRate) * Math.min(1, dt * (this.drifting ? 5 : this.steerRate));
     this.yawRate = clamp(this.yawRate, -4, 4);
     this.yaw = wrapAngle(this.yaw + this.yawRate * dt);
 

@@ -113,14 +113,35 @@ export class Skidmarks {
 }
 
 export class Rain {
+  // Drops live in a box that scrolls with the camera; the GPU animates them from static seeds (no per-frame uploads).
   constructor(scene, n = 2600) {
     this.n = n;
-    this.pos = new Float32Array(n * 6);
-    this.seed = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { this.seed[i * 3] = Math.random(); this.seed[i * 3 + 1] = Math.random(); this.seed[i * 3 + 2] = Math.random(); }
+    const seed = new Float32Array(n * 6), end = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random(), b = Math.random(), c = Math.random();
+      seed.set([a, b, c, a, b, c], i * 6);
+      end[i * 2 + 1] = 1;
+    }
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
-    this.lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: new THREE.Color(0.55, 0.62, 0.8), transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    g.setAttribute('position', new THREE.BufferAttribute(seed, 3));
+    g.setAttribute('end', new THREE.BufferAttribute(end, 1));
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: { cam: { value: new THREE.Vector3() }, t: { value: 0 }, tilt: { value: new THREE.Vector2() }, color: { value: new THREE.Color(0.55, 0.62, 0.8) } },
+      vertexShader: `
+        uniform vec3 cam; uniform float t; uniform vec2 tilt; attribute float end;
+        void main() {
+          const float S = 70.0, H = 34.0, FALL = 26.0, LEN = 0.75;
+          vec3 p;
+          p.x = cam.x + mod(position.x * S - cam.x, S) - S * 0.5;
+          p.z = cam.z + mod(position.z * S - cam.z, S) - S * 0.5;
+          p.y = cam.y + H * 0.6 - mod(position.y * H + t * FALL, H);
+          p += end * vec3(tilt.x, -LEN, tilt.y);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }`,
+      fragmentShader: 'uniform vec3 color; void main() { gl_FragColor = vec4(color * 0.32, 0.32); }',
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this.lines = new THREE.LineSegments(g, this.mat);
     this.lines.frustumCulled = false;
     scene.add(this.lines);
     this.t = 0;
@@ -131,21 +152,11 @@ export class Rain {
   set visible(v) { this.lines.visible = v; }
   get visible() { return this.lines.visible; }
 
-  // Drops live in a box that scrolls with the camera; vx/vz tilt streaks with player motion.
+  // vx/vz tilt streaks with player motion.
   update(dt, cam, vx, vz) {
     if (!this.lines.visible) return;
     this.t += dt;
-    const S = 70, H = 34, fall = 26, len = 0.75;
-    const tx = -vx * 0.025, tz = -vz * 0.025;
-    for (let i = 0; i < (this.count ?? this.n); i++) {
-      const sx = this.seed[i * 3], sy = this.seed[i * 3 + 1], sz = this.seed[i * 3 + 2];
-      const x = cam.x + ((((sx * S - cam.x) % S) + S) % S) - S / 2;
-      const z = cam.z + ((((sz * S - cam.z) % S) + S) % S) - S / 2;
-      const y = cam.y + H * 0.6 - ((sy * H + this.t * fall) % H);
-      const o = i * 6;
-      this.pos[o] = x; this.pos[o + 1] = y; this.pos[o + 2] = z;
-      this.pos[o + 3] = x + tx; this.pos[o + 4] = y - len; this.pos[o + 5] = z + tz;
-    }
-    this.lines.geometry.attributes.position.needsUpdate = true;
+    const u = this.mat.uniforms;
+    u.cam.value.copy(cam); u.t.value = this.t % ((34 / 26) * 700); // whole fall cycles: seamless wrap, keeps float precision u.tilt.value.set(-vx * 0.025, -vz * 0.025);
   }
 }

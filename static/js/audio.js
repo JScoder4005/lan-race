@@ -6,8 +6,10 @@ const SAMPLES = {
 export class Audio {
   constructor() { this.ctx = null; this.muted = false; this.buf = {}; this.ready = false; }
 
-  start() {
-    if (this.ctx) { this.ctx.resume(); return; }
+  // Builds the audio graph and decodes samples at boot (the context starts suspended until a user gesture), so the
+  // first click only has to resume it instead of doing all this work in one frame.
+  init() {
+    if (this.ctx) return;
     const ctx = this.ctx = new AudioContext();
     this.master = ctx.createGain(); this.master.gain.value = 0.6;
     const comp = ctx.createDynamicsCompressor();
@@ -49,6 +51,13 @@ export class Audio {
 
     this.loadSamples();
   }
+
+  start() {
+    this.init();
+    if (this.ctx.state !== 'running') this.ctx.resume();
+  }
+
+  get running() { return this.ctx?.state === 'running'; }
 
   async loadSamples() {
     const ctx = this.ctx;
@@ -119,6 +128,21 @@ export class Audio {
     const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = freq;
     const g = ctx.createGain(); g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     o.connect(g); g.connect(this.sfx); o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  honk() {
+    if (!this.ctx || this.muted) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const dur = 0.42;
+    const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 420;
+    const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.value = 525;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.02);
+    g.gain.setValueAtTime(0.16, t + dur - 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
+    o1.connect(g); o2.connect(g); g.connect(this.sfx);
+    o1.start(t); o2.start(t); o1.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
   }
 
   whoosh() {

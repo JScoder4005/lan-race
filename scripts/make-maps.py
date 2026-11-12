@@ -8,7 +8,8 @@ Route data (c) OpenStreetMap contributors, ODbL.
 import html, json, math, os, re, sys, time, urllib.parse, urllib.request
 
 MAPS = [
-    dict(id='bengaluru', name='BENGALURU', sub='Outer Ring Road', a=(12.99711, 77.66885), b=(13.04769, 77.58095), start='TIN FACTORY', end='BRIGADE SENATE 2'),
+    dict(id='bengaluru', name='BENGALURU', sub='Outer Ring Road', a=(12.99711, 77.66885), b=(13.04769, 77.58095), start='TIN FACTORY', end='BRIGADE SENATE 2',
+         keep_loops=True, min_r=12, flyover=7.0),  # real approach: off the ORR, right under it, right onto the service road
     dict(id='chennai', name='CHENNAI', sub='Marina to Besant Nagar', a=(13.06879, 80.28447), b=(13.00071, 80.27122), start='NAPIER BRIDGE', end="ELLIOT'S BEACH"),
     dict(id='mysuru', name='MYSURU', sub='Palace to Chamundi Hills', a=(12.30522, 76.65538), b=(12.27250, 76.67040), start='MYSORE PALACE', end='CHAMUNDI HILLS'),
     dict(id='wayanad', name='WAYANAD', sub='Thamarassery Ghat', a=(11.48498, 76.01261), b=(11.52057, 76.02035), start='ADIVARAM', end='LAKKIDI',
@@ -17,6 +18,8 @@ MAPS = [
     dict(id='kochi', name='ERNAKULAM', sub='Marine Drive to Edappally', a=(9.97848, 76.27577), b=(10.02610, 76.30800), start='MARINE DRIVE', end='EDAPPALLY'),
     dict(id='trivandrum', name='THIRUVANANTHAPURAM', sub='East Fort to Kovalam', a=(8.48291, 76.94694), b=(8.39510, 76.97299), start='EAST FORT', end='KOVALAM'),
     dict(id='hyderabad', name='HYDERABAD', sub='Charminar to Tank Bund', a=(17.36160, 78.47464), b=(17.42345, 78.48580), start='CHARMINAR', end='TANK BUND'),
+    dict(id='kolar', name='KOLAR', sub='Terahalli Hill Climb to Adima', a=(13.12992, 78.11480), b=(13.13740, 78.09371), start='KOLAR', end='ADIMA',
+         hw=5.5, min_r=8, hairpins=True),  # Terahalli road up the Antara Gange hill; finish position supplied by the map's author
 ]
 OUT = os.path.join(os.path.dirname(__file__), '..', 'static', 'maps')
 PHOTOS = os.path.join(os.path.dirname(__file__), '..', 'static', 'photos')
@@ -149,13 +152,35 @@ def taubin(pts, min_r, rounds=800, lam=0.5, mu=-0.53):
     return pts
 
 
+def raise_flyovers(route, heights, lift, near=30, ramp=200):
+    """Where the route later comes back within `near` m of itself (e.g. doubling back on a service road under an
+    elevated ring road), lift the earlier stretch into a flyover with smooth ramps, so the two never cross at grade."""
+    cum = [0.0]
+    for i in range(1, len(route)): cum.append(cum[-1] + dist(route[i - 1], route[i]))
+    spans = []
+    for i in range(0, len(route), 3):
+        for j in range(i + 40, len(route), 3):
+            if cum[j] - cum[i] > 150 and dist(route[i], route[j]) < near:
+                if spans and cum[i] - spans[-1][1] < 60: spans[-1][1] = cum[i]
+                else: spans.append([cum[i], cum[i]])
+                break
+    out = list(heights)
+    for a, b in spans:
+        for i, d in enumerate(cum):
+            if a - ramp < d < b + ramp:
+                k = 1 if a <= d <= b else (d - (a - ramp)) / ramp if d < a else ((b + ramp) - d) / ramp
+                out[i] = heights[i] + lift * (k * k * (3 - 2 * k))
+        print(f'   flyover {a:.0f}-{b:.0f} m (+{lift} m)')
+    return out
+
+
 def build(m):
     coords = osrm(m['a'], m['b'])
     lat0 = sum(c[1] for c in coords) / len(coords); lon0 = sum(c[0] for c in coords) / len(coords)
     kx = 111320 * math.cos(math.radians(lat0)); kz = 110574
     pts = [((lon - lon0) * kx, -(lat - lat0) * kz) for lon, lat in coords]
     min_r = m.get('min_r', MIN_R)
-    if m.get('hairpins'):  # ghat: no loop removal, non-shrinking smoothing so hairpins keep their real size
+    if m.get('hairpins') or m.get('keep_loops'):  # keep the real path (hairpins, U-turns under flyovers): no loop removal
         pts = local_smooth(taubin(resample(pts, 4), 12), min_r)
     else:
         pts = resample(remove_loops(resample(pts, 4)), 8)
@@ -188,6 +213,7 @@ def build(m):
     for i in range(len(route)):
         f = i / 8; k = min(int(f), len(hs) - 2); t = f - k
         heights.append((hs[k] + (hs[k + 1] - hs[k]) * t - base) * m.get('vscale', 1))
+    if m.get('flyover'): heights = raise_flyovers(route, heights, m['flyover'])
 
     # Terrain: coarse SRTM grid in a corridor around the road.
     step = 150.0; reach = 1300.0
@@ -204,7 +230,8 @@ def build(m):
     grid = [None] * (nx * nz)
     for (i, j), h in zip(want, gh): grid[j * nx + i] = round((h - base) * m.get('vscale', 1), 1)
 
-    pois = find_pois(m, route, to_ll, lat0, lon0, kx, kz)
+    try: pois = find_pois(m, route, to_ll, lat0, lon0, kx, kz)
+    except Exception as e: print('   landmarks skipped:', e); pois = []
     rise = max(heights) - min(heights)
     print(f"{m['id']:>11}: {route_len / 1000:5.1f} km, min radius {min_radius(r8, 2):.0f} m, climb {rise:.0f} m, "
           f"grid {nx}x{nz} ({len(want)} pts), {len(pois)} landmarks")
@@ -363,16 +390,96 @@ def refresh_pois(m, path):
     return d
 
 
+def find_stops(route, to_ll, lat0, lon0, kx, kz, spacing=700, limit=14):
+    """Named bus stops on the route (OSM), spaced out along it: the route's checkpoints."""
+    line = ','.join(f'{a:.5f},{b:.5f}' for a, b in (to_ll(x, z) for x, z in route[::15]))
+    body = ('[out:json][timeout:120];(' + f'node(around:35,{line})["highway"="bus_stop"]["name"];'
+            + f'node(around:35,{line})["public_transport"="platform"]["bus"="yes"]["name"];' + ');out;')
+    d = http_json('https://overpass-api.de/api/interpreter', data=urllib.parse.urlencode({'data': body}).encode())
+    cum = [0.0]
+    for i in range(1, len(route)): cum.append(cum[-1] + dist(route[i - 1], route[i]))
+    found = {}
+    for e in d['elements']:
+        t = e.get('tags', {})
+        name = (t.get('name:en') or t['name']).strip()
+        if name == name.lower(): name = name.title()  # some OSM names are all lowercase
+        x, z = (e['lon'] - lon0) * kx, -(e['lat'] - lat0) * kz
+        i = min(range(0, len(route), 2), key=lambda k: (route[k][0] - x) ** 2 + (route[k][1] - z) ** 2)
+        if math.hypot(route[i][0] - x, route[i][1] - z) > 40: continue
+        key = re.sub(r'\W+', '', name.lower())
+        if key not in found: found[key] = {'name': name, 'd': round(cum[i]), 'x': round(x, 1), 'z': round(z, 1)}
+    picked = []
+    for st in sorted(found.values(), key=lambda q: q['d']):
+        if st['d'] < 300 or st['d'] > cum[-1] - 300: continue
+        if picked and st['d'] - picked[-1]['d'] < spacing: continue
+        picked.append(st)
+    if len(picked) > limit:  # keep an even spread
+        picked = [picked[round(k * (len(picked) - 1) / (limit - 1))] for k in range(limit)]
+    return picked
+
+
+def hairpins(route, cum, stops, total=9):
+    """Numbered hairpin bends. Hairpins named in OSM (e.g. a "7th Hair pin bend" bus stop) anchor the numbering; the
+    others are the sharpest bends (heading turns back >120 degrees within 120 m) before/after the anchors."""
+    h = [math.atan2(route[i + 1][0] - route[i][0], route[i + 1][1] - route[i][1]) for i in range(len(route) - 1)]
+    turn = sorted(((abs((h[i + 15] - h[i - 15] + math.pi) % (2 * math.pi) - math.pi), i) for i in range(15, len(h) - 15)), reverse=True)
+    cands = []
+    for a, i in turn:
+        if a < math.radians(120): break
+        if all(abs(cum[i] - cum[j]) > 150 for j in cands): cands.append(i)
+    anchors = {}
+    for q in stops:
+        mt = re.match(r'\s*(\d+)\s*\w*\s*hair', q['name'], re.I)
+        if mt: anchors[int(mt.group(1))] = q['d']
+    if not anchors: return [{'name': f'Hairpin {k + 1}', 'd': round(cum[i]), 'x': round(route[i][0], 1), 'z': round(route[i][1], 1)} for k, i in enumerate(sorted(cands[:total]))]
+    lo, hi = min(anchors), max(anchors)
+    near = lambda d: min(range(len(cum)), key=lambda k: abs(cum[k] - d))
+    picked = {n: near(d) for n, d in anchors.items()}
+    below = sorted([i for i in cands if cum[i] < anchors[lo] - 150][:lo - 1])  # strongest bends, then in road order
+    above = sorted([i for i in cands if cum[i] > anchors[hi] + 150][:total - hi])
+    for n, i in zip(range(1, lo), below): picked[n] = i
+    for n, i in zip(range(hi + 1, total + 1), above): picked[n] = i
+    return [{'name': f'Hairpin {n}', 'd': round(cum[i]), 'x': round(route[i][0], 1), 'z': round(route[i][1], 1)} for n, i in sorted(picked.items(), key=lambda q: cum[q[1]])]
+
+
+def refresh_stops(m, path, gap=1800):
+    with open(path) as f: d = json.load(f)
+    lat0, lon0 = d['origin']
+    kx = 111320 * math.cos(math.radians(lat0)); kz = 110574
+    route = [(p[0], p[1]) for p in d['points']]
+    cum = [0.0]
+    for i in range(1, len(route)): cum.append(cum[-1] + dist(route[i - 1], route[i]))
+    stops = find_stops(route, lambda x, z: (lat0 - z / kz, lon0 + x / kx), lat0, lon0, kx, kz)
+    if m.get('hairpins'): stops = sorted(hairpins(route, cum, stops) + [q for q in stops if 'hair' not in q['name'].lower()], key=lambda q: q['d'])
+    # fill long gaps with the route's landmarks
+    extra = [{'name': q['name'], 'd': round(cum[min(q['idx'], len(cum) - 1)]), 'x': q['x'], 'z': q['z']} for q in d.get('pois', [])]
+    while True:
+        marks = [0] + [q['d'] for q in stops] + [cum[-1]]
+        gaps = sorted(((marks[k + 1] - marks[k], marks[k], marks[k + 1]) for k in range(len(marks) - 1) if marks[k + 1] - marks[k] > gap), reverse=True)
+        placed = False
+        for _, a, b in gaps:
+            inside = [q for q in extra if a + 400 < q['d'] < b - 400]
+            if inside:
+                best = min(inside, key=lambda q: abs(q['d'] - (a + b) / 2))
+                stops = sorted(stops + [best], key=lambda q: q['d']); extra.remove(best); placed = True
+                break
+        if not placed: break
+    d['stops'] = stops
+    print(f"{m['id']:>11}: {len(d['stops'])} stops: " + ', '.join(q['name'] for q in d['stops']))
+    time.sleep(2)
+    return d
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     args = sys.argv[1:]
-    pois_only = '--pois' in args
+    pois_only, stops_only = '--pois' in args, '--stops' in args
     only = set(a for a in args if not a.startswith('--'))
     index = []
     for m in MAPS:
         path = os.path.join(OUT, m['id'] + '.json')
         if not only or m['id'] in only:
-            data = refresh_pois(m, path) if pois_only else build(m)
+            data = refresh_pois(m, path) if pois_only else refresh_stops(m, path) if stops_only else build(m)
             with open(path, 'w') as f: json.dump(data, f, separators=(',', ':'))
         with open(path) as f: d = json.load(f)
         e = {k: d[k] for k in ('id', 'name', 'sub', 'start', 'end', 'length')}

@@ -27,6 +27,7 @@ export class Input {
     s.brake = k.has('KeyS') || k.has('ArrowDown') ? 1 : 0;
     s.handbrake = k.has('Space');
     s.nitro = k.has('ShiftLeft') || k.has('ShiftRight') || k.has('KeyN');
+    s.wheelie = k.has('KeyQ');
     let analog = null;
     const gp = [...(navigator.getGamepads?.() || [])].find((g) => g && g.connected);
     if (gp) {
